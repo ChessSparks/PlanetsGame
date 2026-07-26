@@ -37,49 +37,6 @@ export function createSun(color, coreRadius) {
   return group;
 }
 
-export function createRocket() {
-  const group = new THREE.Group();
-
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8e8f0, metalness: 0.4, roughness: 0.4 });
-  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xff4d4d, metalness: 0.2, roughness: 0.5 });
-  const noseMat = new THREE.MeshStandardMaterial({ color: 0x3aa0ff, metalness: 0.5, roughness: 0.3 });
-
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 2.6, 16), bodyMat);
-  body.position.y = 0;
-  group.add(body);
-
-  const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.4, 16), stripeMat);
-  stripe.position.y = 0.2;
-  group.add(stripe);
-
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.4, 16), noseMat);
-  nose.position.y = 2.0;
-  group.add(nose);
-
-  const finGeo = new THREE.ConeGeometry(0.55, 1.1, 4);
-  const finPositions = [
-    [0.9, -1.1, 0], [-0.9, -1.1, 0], [0, -1.1, 0.9], [0, -1.1, -0.9],
-  ];
-  for (const [x, y, z] of finPositions) {
-    const fin = new THREE.Mesh(finGeo, stripeMat);
-    fin.position.set(x, y, z);
-    fin.rotation.x = Math.PI;
-    fin.scale.set(1, 1, 0.4);
-    fin.lookAt(x * 2, y - 1.1, z * 2);
-    group.add(fin);
-  }
-
-  const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa64d, transparent: true, opacity: 0.9 });
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.2, 12), flameMat);
-  flame.position.y = -1.9;
-  flame.rotation.x = Math.PI;
-  group.add(flame);
-  group.userData.flame = flame;
-
-  group.userData.radius = 1.3;
-  return group;
-}
-
 function makeEarthTexture() {
   const size = 512;
   const canvas = document.createElement('canvas');

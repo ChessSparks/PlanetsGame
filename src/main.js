@@ -32,15 +32,20 @@ initInput();
 let activeScene = null;
 const clock = new THREE.Clock();
 
-function startAscentPhase(fuelCellsCollected, totalFuelCells) {
+async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
   const startFuel = Math.min(100, 60 + Math.round((fuelCellsCollected / totalFuelCells) * 40));
   hideKeysDisplay();
   showHud();
   camera.position.set(0, -1.7, 15);
-  activeScene = createAscentScene({
+  activeScene = null;
+  // The ship model is already cached from the ground scene (same URL), so
+  // this resolves near-instantly in practice — still awaited properly since
+  // createAscentScene is async now that it loads that model itself.
+  const ascent = await createAscentScene({
     startFuel,
     onRestart: () => startGroundPhase(),
   });
+  activeScene = ascent;
   showOverlay(
     'Liftoff!',
     `Rocket repaired and fueled (${fuelCellsCollected}/${totalFuelCells} fuel cells collected on the ground).\nStarting fuel: ${startFuel}%\n\nW/↑: Thrust    A/D or ←/→: Strafe`,
@@ -53,7 +58,15 @@ async function startGroundPhase() {
   camera.position.set(0, 25, 6.5);
   activeScene = null;
   const ground = await createGroundScene({
-    onLaunch: (collected, total) => startAscentPhase(collected, total),
+    onLaunch: (collected, total) => startAscentPhase(collected, total).catch((err) => {
+      console.error('Failed to start ascent phase:', err);
+      showOverlay(
+        'Something went wrong',
+        `The ascent scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+        'Retry',
+        () => startGroundPhase().catch((e) => console.error(e)),
+      );
+    }),
   });
   activeScene = ground;
   hideLoadingScreen();

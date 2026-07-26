@@ -1,14 +1,22 @@
 import * as THREE from 'three';
 import {
-  createRocket, createEarth, createStarfield, createFuelCell,
+  createEarth, createStarfield, createFuelCell,
   createBird, createDrone, createSatellite, createOrbitRing,
 } from '../entities.js';
+import { loadDecoration } from '../game/models.js';
 import { keys } from '../game/input.js';
 import { setBarLabels, setTopBar, setBottomBar, setCellsCount, showOverlay } from '../game/hud.js';
 
 const ORBIT_ALTITUDE = 140;
 const EARTH_RADIUS = 300;
 const LANE_HALF_WIDTH = 7;
+
+// Reuses the same spaceship model (and normalization convention — feet/base
+// at local y=0) as the ground scene, so it's recognizably "your ship" in
+// both phases instead of a generic placeholder rocket.
+const SHIP_HEIGHT = 3.6;
+const SHIP_COLLISION_RADIUS = 1.3;
+const GROUND_Y = 0; // ship's base sits flush with the pad's top surface
 
 const THRUST_ACCEL = 26;
 const GRAVITY = 10;
@@ -40,7 +48,19 @@ const LEVEL_LAYOUT = [
 ];
 const TOTAL_FUEL_CELLS = LEVEL_LAYOUT.filter((e) => e.type === 'fuel').length;
 
-export function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}) {
+// A simple procedural exhaust cone attached under the loaded ship — the
+// source model has no built-in engine effect, so this substitutes for the
+// old placeholder rocket's flame the same way (a cone flipped to taper
+// away from the hull, toggled visible while thrusting).
+function createThrustFlame() {
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0xffa64d, transparent: true, opacity: 0.9 });
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.0, 12), flameMat);
+  flame.position.y = -0.35;
+  flame.rotation.x = Math.PI;
+  return flame;
+}
+
+export async function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x02050f);
   scene.fog = new THREE.Fog(0x02050f, 60, 260);
@@ -65,12 +85,16 @@ export function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}) {
   orbitRing.position.y = ORBIT_ALTITUDE;
   scene.add(orbitRing);
 
-  const rocket = createRocket();
-  rocket.position.set(0, 1.3, 0);
+  const rocket = await loadDecoration('/assets/spaceship.glb', SHIP_HEIGHT);
+  rocket.userData.radius = SHIP_COLLISION_RADIUS;
+  const flame = createThrustFlame();
+  rocket.add(flame);
+  rocket.userData.flame = flame;
+  rocket.position.set(0, GROUND_Y, 0);
   scene.add(rocket);
 
   const player = {
-    x: 0, y: 1.3, vx: 0, vy: 0,
+    x: 0, y: GROUND_Y, vx: 0, vy: 0,
     fuel: startFuel, cellsCollected: 0, invulnTimer: 0,
   };
 
@@ -94,9 +118,9 @@ export function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}) {
   let state = 'playing';
 
   function resetGame(newStartFuel) {
-    player.x = 0; player.y = 1.3; player.vx = 0; player.vy = 0;
+    player.x = 0; player.y = GROUND_Y; player.vx = 0; player.vy = 0;
     player.fuel = newStartFuel ?? FUEL_MAX; player.cellsCollected = 0; player.invulnTimer = 0;
-    rocket.position.set(0, 1.3, 0);
+    rocket.position.set(0, GROUND_Y, 0);
     rocket.rotation.set(0, 0, 0);
     buildLevel();
     state = 'playing';
@@ -133,7 +157,7 @@ export function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}) {
     player.y += player.vy * dt;
 
     player.x = THREE.MathUtils.clamp(player.x, -LANE_HALF_WIDTH, LANE_HALF_WIDTH);
-    if (player.y < 1.3) { player.y = 1.3; player.vy = Math.max(0, player.vy * 0.2); }
+    if (player.y < GROUND_Y) { player.y = GROUND_Y; player.vy = Math.max(0, player.vy * 0.2); }
 
     rocket.position.set(player.x, player.y, 0);
     rocket.rotation.z = THREE.MathUtils.lerp(rocket.rotation.z, -player.vx * 0.05, 0.15);
@@ -219,7 +243,7 @@ export function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}) {
         'Play Again',
         () => { onRestart ? onRestart() : resetGame(startFuel); },
       );
-    } else if (player.fuel <= 0 && player.y <= 1.35 && player.vy <= 0) {
+    } else if (player.fuel <= 0 && player.y <= GROUND_Y + 0.05 && player.vy <= 0) {
       state = 'lost';
       showOverlay(
         'Mission Failed',

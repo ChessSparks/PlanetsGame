@@ -12,6 +12,9 @@ import {
 import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
 import { showSlidingPuzzle, hideSlidingPuzzle } from '../game/puzzle.js';
+import {
+  unlockAudio, playFootstep, playPickupChime, playDroneAlert,
+} from '../game/audio.js';
 
 const PLANET_RADIUS = 22;
 
@@ -29,6 +32,8 @@ const GRAVITY = 18;
 // scaling the whole rig (rather than individual bones) is skinning-safe.
 const JUMP_SQUASH_REFERENCE = 0.4;
 const JUMP_SQUASH_AMOUNT = 0.08;
+const FOOTSTEP_INTERVAL_WALK = 0.42;
+const FOOTSTEP_INTERVAL_RUN = 0.26;
 
 const CAM_DISTANCE = 6.5;
 const CAM_HEIGHT = 3.0;
@@ -93,7 +98,7 @@ const DRONE_CHASE_ALTITUDE = 1.0; // hover height above the player while chasing
 // isn't enough margin to feel escapable. Chase speed sits well under
 // RUN_SPEED for that, and DRONE_MAX_CHASE_SECONDS guarantees a chase always
 // ends even on a run where the player never clears the disengage radius.
-const DRONE_CHASE_SPEED = 4.6; // units/sec while chasing
+const DRONE_CHASE_SPEED = 3.9; // units/sec while chasing
 const DRONE_MAX_CHASE_SECONDS = 8; // hard cap on chase duration regardless of distance
 const DRONE_PATROL_CATCH_SPEED = 8; // units/sec used to fly back onto the orbit path once a chase ends
 // Must clear SHIP_BLOCK_RADIUS + PLAYER_COLLISION_RADIUS (the closest the
@@ -263,6 +268,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   const windSwayables = []; // { mesh, baseQuat, amplitude, speed, phase } — foliage that sways in the wind
   let jumpVelocity = 0;
   let jumpHeight = 0;
+  let footstepTimer = 0;
 
   const astronaut = await loadAstronaut();
   scene.add(astronaut.object3D);
@@ -332,6 +338,17 @@ export async function createGroundScene({ onLaunch } = {}) {
   readyRing.material.color.set(0x888888);
   readyRing.material.opacity = 0.45;
   scene.add(readyRing);
+
+  // Marks the fuel puzzle site — invisible until relevant (ship repaired,
+  // fuel not yet secured), then pulses so it reads as a beacon to walk
+  // toward rather than just another static decoration.
+  const fuelBeacon = createOrbitRing(2.2);
+  orientToNormal(fuelBeacon, SMALL_VOLCANO_SPOT.normal, 0);
+  fuelBeacon.rotateX(Math.PI / 2);
+  fuelBeacon.position.copy(SMALL_VOLCANO_SPOT.normal).multiplyScalar(PLANET_RADIUS + 0.4);
+  fuelBeacon.material.color.set(0xff8c42);
+  fuelBeacon.material.opacity = 0;
+  scene.add(fuelBeacon);
 
   const drones = DRONE_PATROLS.map((patrol) => {
     const mesh = createDrone();
@@ -409,6 +426,7 @@ export async function createGroundScene({ onLaunch } = {}) {
       'Your spaceship (nearby!) needs repairing. First find the key finder device, then use it to track down the 3 hidden keys, then return to the ship and press E.\nTwo of the keys are guarded by patrol drones — get too close and they\'ll chase you down. Touching one is fatal, but you can outrun them.\n\nW/↑: Walk   S/↓: Back   A/D: Turn   Shift: Run   Space: Jump   E: Interact',
       'Begin',
       () => {
+        unlockAudio();
         state = 'playing';
         announce('Objective: find the key finder device nearby.');
       },
@@ -523,6 +541,16 @@ export async function createGroundScene({ onLaunch } = {}) {
       walker.forward.copy(prevForward);
     }
 
+    if (speed !== 0 && jumpHeight <= 0) {
+      footstepTimer -= dt;
+      if (footstepTimer <= 0) {
+        playFootstep(anim === 'Run' ? 1 : 0.7);
+        footstepTimer = anim === 'Run' ? FOOTSTEP_INTERVAL_RUN : FOOTSTEP_INTERVAL_WALK;
+      }
+    } else {
+      footstepTimer = 0;
+    }
+
     const newPos = walker.getPosition(PLANET_RADIUS);
     for (const drone of drones) {
       if (drone.disabled) continue;
@@ -566,6 +594,7 @@ export async function createGroundScene({ onLaunch } = {}) {
       finderCollected = true;
       scene.remove(finderMesh);
       spawnKeys();
+      playPickupChime();
       flashToast('Key finder acquired!', 2000);
       astronaut.fadeTo('Interact', {
         duration: 0.15, loop: false,
@@ -585,6 +614,7 @@ export async function createGroundScene({ onLaunch } = {}) {
         key.collected = true;
         scene.remove(key.mesh);
         keysCollected += 1;
+        playPickupChime();
         setKeysDisplay(keysCollected, keyPickups.length);
         astronaut.fadeTo('Interact', {
           duration: 0.15, loop: false,
@@ -648,12 +678,8 @@ export async function createGroundScene({ onLaunch } = {}) {
     shipRepaired = true;
     readyRing.material.color.set(0x7bffb0);
     readyRing.material.opacity = 0.85;
-    showOverlay(
-      'Spaceship Repaired!',
-      'You gathered all 3 keys and got the ship running again.\n\nIt still needs fuel. Find the small volcano near the big one and solve the puzzle there to secure a fuel cell.',
-      'Nice!',
-      () => {},
-    );
+    playPickupChime();
+    flashToast('Spaceship repaired!', 2200);
     announce('Spaceship repaired. Objective: find the small volcano nearby and solve its puzzle to secure fuel.');
   }
 
@@ -667,12 +693,24 @@ export async function createGroundScene({ onLaunch } = {}) {
       return;
     }
     state = 'puzzle';
-    showSlidingPuzzle(() => {
-      fuelSecured = true;
-      state = 'playing';
-      flashToast('Fuel cell secured!', 2200);
-      announce('Fuel secured. Return to the spaceship and press E to launch.');
-    });
+    showSlidingPuzzle(
+      () => {
+        fuelSecured = true;
+        state = 'playing';
+        playPickupChime();
+        flashToast('Fuel cell secured!', 2200);
+        announce('Fuel secured. Return to the spaceship and press E to launch.');
+      },
+      () => {
+        state = 'playing';
+      },
+    );
+  }
+
+  function updateFuelBeacon(elapsed) {
+    fuelBeacon.material.opacity = (shipRepaired && !fuelSecured)
+      ? 0.35 + Math.sin(elapsed * 3) * 0.25
+      : 0;
   }
 
   function updateMinimap() {
@@ -691,6 +729,7 @@ export async function createGroundScene({ onLaunch } = {}) {
     }
 
     addBlip(SHIP_SPOT.normal, shipRepaired ? '#7bffb0' : '#ffd166', 7, 'ship');
+    addBlip(VOLCANO_SPOT.normal, '#ff5e3a', 5);
     if (!finderCollected) addBlip(KEY_FINDER_SPOT.normal, '#ffb347', 5);
     if (finderCollected) {
       for (const key of keyPickups) if (!key.collected) addBlip(key.normal, '#7be0ff', 4);
@@ -721,7 +760,10 @@ export async function createGroundScene({ onLaunch } = {}) {
       if (drone.mode === 'patrol' && distToPlayer < DRONE_AGGRO_RADIUS) {
         drone.mode = 'chase';
         drone.chaseTime = 0;
-        if (state === 'playing') flashToast('A drone spotted you — run!', 1800);
+        if (state === 'playing') {
+          flashToast('A drone spotted you — run!', 1800);
+          playDroneAlert();
+        }
       } else if (drone.mode === 'chase'
         && (distToPlayer > DRONE_DISENGAGE_RADIUS || drone.chaseTime > DRONE_MAX_CHASE_SECONDS)) {
         drone.mode = 'patrol';
@@ -860,6 +902,7 @@ export async function createGroundScene({ onLaunch } = {}) {
       updateDrones(dt, elapsed, walker.getPosition(PLANET_RADIUS), walker.normal);
       updateSmoke(dt);
       updateWind(elapsed);
+      updateFuelBeacon(elapsed);
       updateMinimap();
     },
   };

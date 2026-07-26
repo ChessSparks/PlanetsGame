@@ -8,6 +8,7 @@ const SOLVED = Array.from({ length: SIZE * SIZE - 1 }, (_, i) => i + 1).concat(0
 let overlayEl = null;
 let gridEl = null;
 let onSolvedCallback = null;
+let onCancelCallback = null;
 let board = [];
 
 function ensureDom() {
@@ -25,7 +26,12 @@ function ensureDom() {
   `;
   document.body.appendChild(overlayEl);
   gridEl = overlayEl.querySelector('#puzzle-grid');
-  overlayEl.querySelector('#puzzle-close').addEventListener('click', hideSlidingPuzzle);
+  // Distinct from the solved-path close: this is the player bailing out
+  // without solving it, so the caller needs its own signal to unpause.
+  overlayEl.querySelector('#puzzle-close').addEventListener('click', () => {
+    hideSlidingPuzzle();
+    if (onCancelCallback) onCancelCallback();
+  });
 }
 
 // Shuffles by replaying random legal slides from the solved state, so the
@@ -89,9 +95,10 @@ function tryMove(i) {
   }
 }
 
-export function showSlidingPuzzle(onSolved) {
+export function showSlidingPuzzle(onSolved, onCancel) {
   ensureDom();
   onSolvedCallback = onSolved;
+  onCancelCallback = onCancel;
   board = shuffledBoard();
   render();
   overlayEl.classList.remove('hidden');
