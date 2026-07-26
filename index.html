@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planets Game — Level 1: Earth</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="hud">
+    <div class="bar-group">
+      <div class="bar-label">FUEL</div>
+      <div class="bar-track"><div id="fuel-fill" class="bar-fill fuel"></div></div>
+    </div>
+    <div class="bar-group">
+      <div class="bar-label">ALTITUDE</div>
+      <div class="bar-track"><div id="altitude-fill" class="bar-fill altitude"></div></div>
+    </div>
+    <div id="cells-counter">Fuel Cells: <span id="cells-count">0</span> / <span id="cells-total">0</span></div>
+  </div>
+
+  <div id="message-overlay" class="hidden">
+    <div id="message-box">
+      <h1 id="message-title"></h1>
+      <p id="message-body"></p>
+      <button id="message-button">Start</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
