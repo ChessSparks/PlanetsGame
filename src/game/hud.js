@@ -98,6 +98,27 @@ export function announceObjective(text) {
   el._hideTimer = setTimeout(() => { el.style.opacity = '0'; }, 5200);
 }
 
+// A quick full-screen white flash — used for cinematic impact beats (e.g.
+// the crash cutscene) rather than any regular HUD feedback.
+export function flashScreenWhite(duration = 350) {
+  let flash = document.getElementById('screen-flash');
+  if (!flash) {
+    flash = document.createElement('div');
+    flash.id = 'screen-flash';
+    flash.style.cssText = `
+      position: fixed; inset: 0; background: #fff; opacity: 0;
+      pointer-events: none; z-index: 40;
+    `;
+    document.body.appendChild(flash);
+  }
+  flash.style.transition = 'none';
+  flash.style.opacity = '1';
+  requestAnimationFrame(() => {
+    flash.style.transition = `opacity ${duration}ms ease-out`;
+    flash.style.opacity = '0';
+  });
+}
+
 export function flashToast(text, duration = 2200) {
   let toast = document.getElementById('toast');
   if (!toast) {

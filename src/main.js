@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { initInput } from './game/input.js';
-import { showOverlay } from './game/hud.js';
+import { showOverlay, showHud, hideKeysDisplay } from './game/hud.js';
 import { createGroundScene } from './scenes/groundScene.js';
 import { createAscentScene } from './scenes/ascentScene.js';
 
@@ -26,6 +26,8 @@ const clock = new THREE.Clock();
 
 function startAscentPhase(fuelCellsCollected, totalFuelCells) {
   const startFuel = Math.min(100, 60 + Math.round((fuelCellsCollected / totalFuelCells) * 40));
+  hideKeysDisplay();
+  showHud();
   camera.position.set(0, -1.7, 15);
   activeScene = createAscentScene({
     startFuel,

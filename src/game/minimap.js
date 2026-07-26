@@ -93,5 +93,9 @@ export function createMinimap() {
     wrap.remove();
   }
 
-  return { draw, destroy };
+  function setVisible(visible) {
+    wrap.style.display = visible ? 'block' : 'none';
+  }
+
+  return { draw, destroy, setVisible };
 }

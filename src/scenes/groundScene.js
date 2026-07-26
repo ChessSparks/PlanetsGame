@@ -6,9 +6,12 @@ import { loadAstronaut } from '../game/character.js';
 import { loadDecoration } from '../game/models.js';
 import { createPlanetWalker, fibonacciSphere, orientToNormal } from '../game/planet.js';
 import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
-import { hideHud, showOverlay, flashToast, setKeysDisplay, announceObjective } from '../game/hud.js';
+import {
+  hideHud, showOverlay, flashToast, setKeysDisplay, announceObjective, flashScreenWhite,
+} from '../game/hud.js';
 import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
+import { showSlidingPuzzle, hideSlidingPuzzle } from '../game/puzzle.js';
 
 const PLANET_RADIUS = 22;
 
@@ -19,6 +22,13 @@ const TURN_SPEED = 2.4;
 
 const JUMP_SPEED = 6.5;
 const GRAVITY = 18;
+// The rig has no authored jump clip, so airborne reuses the existing "Run"
+// clip (already more bent-kneed than Walk/Idle) rather than posing bones
+// directly — bone rotation kept distorting the boots via the mesh's skin
+// weights. A small whole-body squash on top exaggerates it a bit further;
+// scaling the whole rig (rather than individual bones) is skinning-safe.
+const JUMP_SQUASH_REFERENCE = 0.4;
+const JUMP_SQUASH_AMOUNT = 0.08;
 
 const CAM_DISTANCE = 6.5;
 const CAM_HEIGHT = 3.0;
@@ -45,6 +55,9 @@ const HOUSE_SPOTS = [
   { normal: sph(24, 192), clear: 0.28 },
 ];
 const VOLCANO_SPOT = { normal: sph(-35, 12), clear: 0.4 };
+// A short walk from the main volcano — where the fuel puzzle lives, found
+// only after the ship is repaired.
+const SMALL_VOLCANO_SPOT = { normal: sph(-24, 30), clear: 0.15 };
 const WILDLIFE_SPOTS = [
   { normal: sph(6, -50), url: '/assets/deer.glb', height: 1.2 },
   { normal: sph(-6, -72), url: '/assets/deer.glb', height: 1.15 },
@@ -67,19 +80,64 @@ const DRONE_PATROLS = [
 const KEY_PICKUP_RADIUS = 1.1;
 const FINDER_PICKUP_RADIUS = 1.2;
 const DRONE_HAZARD_RADIUS = 1.4;
+// Patrol orbit keeps a drone's distance from the player's max walking height
+// (sqrt((PLANET_RADIUS+altitude)^2 + orbitRadius^2) - PLANET_RADIUS) always
+// well above PLAYER_COLLISION_RADIUS + DRONE_HAZARD_RADIUS, so contact only
+// ever happens once a drone leaves patrol and chases the player directly.
+const DRONE_AGGRO_RADIUS = 9; // distance at which a patrolling drone notices the player and gives chase
+const DRONE_DISENGAGE_RADIUS = 13; // distance at which a chasing drone gives up and returns to its post
+const DRONE_CHASE_ALTITUDE = 1.0; // hover height above the player while chasing — low enough for contact to land
+// Pure-pursuit steering (aimed at the player's current spot, not led ahead)
+// lets a drone cut corners every time the player turns, which happens
+// constantly on a sphere with obstacles — so a nominal speed edge alone
+// isn't enough margin to feel escapable. Chase speed sits well under
+// RUN_SPEED for that, and DRONE_MAX_CHASE_SECONDS guarantees a chase always
+// ends even on a run where the player never clears the disengage radius.
+const DRONE_CHASE_SPEED = 4.6; // units/sec while chasing
+const DRONE_MAX_CHASE_SECONDS = 8; // hard cap on chase duration regardless of distance
+const DRONE_PATROL_CATCH_SPEED = 8; // units/sec used to fly back onto the orbit path once a chase ends
 // Must clear SHIP_BLOCK_RADIUS + PLAYER_COLLISION_RADIUS (the closest the
 // player can physically stand, since the ship is solid) with margin to spare.
 const SHIP_INTERACT_RADIUS = 4.6;
+const SMALL_VOLCANO_INTERACT_RADIUS = 2.6;
 
 const CLEAR_ZONES = [
   SPAWN_CLEAR,
   SHIP_SPOT,
   KEY_FINDER_SPOT,
   VOLCANO_SPOT,
+  SMALL_VOLCANO_SPOT,
   ...HOUSE_SPOTS,
   ...KEY_SPOTS,
   ...WILDLIFE_SPOTS.map((w) => ({ normal: w.normal, clear: 0.11 })),
 ];
+
+// Where a drone would be right now if it were purely following its patrol
+// orbit, regardless of its current actual position (used both for normal
+// patrolling and as the fly-back target after a chase ends).
+function orbitPosition(drone, elapsed, target = new THREE.Vector3()) {
+  const t = elapsed * drone.speed + drone.phase;
+  return target.copy(drone.center)
+    .multiplyScalar(PLANET_RADIUS + drone.altitude)
+    .addScaledVector(drone.u, Math.cos(t) * drone.orbitRadius)
+    .addScaledVector(drone.v, Math.sin(t) * drone.orbitRadius);
+}
+
+// Steps `pos` toward `target` by at most `maxStep`, landing exactly on it
+// once in range — gives drones a finite flight speed instead of teleporting.
+function moveToward(pos, target, maxStep) {
+  const dx = target.x - pos.x;
+  const dy = target.y - pos.y;
+  const dz = target.z - pos.z;
+  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (dist <= maxStep || dist === 0) {
+    pos.copy(target);
+  } else {
+    pos.x += (dx / dist) * maxStep;
+    pos.y += (dy / dist) * maxStep;
+    pos.z += (dz / dist) * maxStep;
+  }
+}
 
 function tangentBasis(normal) {
   const hint = Math.abs(normal.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
@@ -104,6 +162,7 @@ const FOREST_COUNT = 220;
 
 const HOUSE_BLOCK_RADIUS = 3.2;
 const VOLCANO_BLOCK_RADIUS = 4.5;
+const SMALL_VOLCANO_BLOCK_RADIUS = 1.8;
 const SHIP_BLOCK_RADIUS = 3.0;
 const PLAYER_COLLISION_RADIUS = 0.45;
 
@@ -128,7 +187,9 @@ const SUNS = [
 // true "ground" of the mesh (padding, foliage sprites, etc.), which left
 // everything looking like it hovered just above the surface. Sinking each
 // category in slightly by its own depth hides that gap.
-const EMBED = { forest: 0.35, house: 0.95, volcano: 1.4, wildlife: 0.25, ship: 0.5 };
+const EMBED = {
+  forest: 0.35, house: 0.95, volcano: 1.4, smallVolcano: 0.55, wildlife: 0.25, ship: 0.5,
+};
 
 function placeOnSurface(object, normal, embed) {
   object.position.copy(normal).multiplyScalar(PLANET_RADIUS - embed);
@@ -140,9 +201,25 @@ function hoverPlace(object, normal, height) {
   orientToNormal(object, normal, 0);
 }
 
-// Rocket repair / launch gameplay returns once the planet exploration itself
-// is solid; for now this scene is exploration-only and ignores any args.
-export async function createGroundScene() {
+// In-engine crash cutscene: the ship falls from CUTSCENE_DROP_ALTITUDE above
+// (and CUTSCENE_DROP_LATERAL to the side of) its resting spot, sweeping in
+// at an angle rather than dropping straight down, and settles into exactly
+// the transform placeShip() already gave it — no separate "final pose" to
+// keep in sync.
+const CUTSCENE_DURATION = 6.5;
+const CUTSCENE_DROP_ALTITUDE = 60;
+const CUTSCENE_DROP_LATERAL = 22;
+const SMOKE_FALL_INTERVAL = 0.05; // seconds between puffs while the ship is falling
+const SMOKE_TAIL_INTERVAL = 0.35; // seconds between puffs from the wreck afterward
+const SMOKE_TAIL_DURATION = 4; // how long the wreck keeps smoking post-impact
+
+// onLaunch(fuelCellsCollected, totalFuelCells) is invoked once the player
+// has repaired the ship, secured fuel via the volcano puzzle, and interacts
+// with the ship again — the caller (main.js) uses it to transition into the
+// ascent minigame.
+export async function createGroundScene({ onLaunch } = {}) {
+  hideHud();
+
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x8fd0ff);
   scene.fog = new THREE.Fog(0xbfe6ff, 60, 190);
@@ -201,9 +278,35 @@ export async function createGroundScene() {
   earth.position.copy(EARTH_DIRECTION).multiplyScalar(EARTH_DISTANCE);
   scene.add(earth);
 
-  // Decorations load and populate in the background so a single bad model
-  // (network hiccup, bad asset) can't ever block the planet itself from
-  // rendering — each piece is independently fault-tolerant.
+  // Ship is loaded and placed up front (awaited) so the crash cutscene below
+  // has the real mesh to animate falling into its resting transform.
+  const ship = await placeShip(scene, obstacles);
+  const shipBasis = tangentBasis(SHIP_SPOT.normal);
+  let shipRestPos = null;
+  let shipRestQuat = null;
+  let shipStartPos = null;
+  let shipStartQuat = null;
+  let shipArcControl = null;
+  if (ship) {
+    shipRestPos = ship.position.clone();
+    shipRestQuat = ship.quaternion.clone();
+    shipStartPos = shipRestPos.clone()
+      .addScaledVector(SHIP_SPOT.normal, CUTSCENE_DROP_ALTITUDE)
+      .addScaledVector(shipBasis.u, CUTSCENE_DROP_LATERAL);
+    // Bezier control point sits wide and roughly mid-height, so the path
+    // sweeps outward first (a shallow, banking entry) before diving down
+    // into the impact point, rather than a straight-line drop.
+    shipArcControl = shipRestPos.clone()
+      .addScaledVector(SHIP_SPOT.normal, CUTSCENE_DROP_ALTITUDE * 0.55)
+      .addScaledVector(shipBasis.u, CUTSCENE_DROP_LATERAL * 1.7);
+    shipStartQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.6, 1.1, 0.4));
+    ship.position.copy(shipStartPos);
+    ship.quaternion.copy(shipStartQuat);
+  }
+
+  // The rest of the decorations load and populate in the background so a
+  // single bad model (network hiccup, bad asset) can't ever block the planet
+  // itself from rendering — each piece is independently fault-tolerant.
   populatePlanet(scene, satellite, earth, obstacles, windSwayables);
 
   // Keys stay off-scene until the key finder is picked up — spawnKeys() adds
@@ -215,6 +318,7 @@ export async function createGroundScene() {
   }));
   let keysCollected = 0;
   let shipRepaired = false;
+  let fuelSecured = false;
 
   const finderMesh = await loadDecoration('/assets/compass.glb', 0.6);
   hoverPlace(finderMesh, KEY_FINDER_SPOT.normal, 1.0);
@@ -232,12 +336,26 @@ export async function createGroundScene() {
   const drones = DRONE_PATROLS.map((patrol) => {
     const mesh = createDrone();
     scene.add(mesh);
-    return { ...patrol, mesh, ...tangentBasis(patrol.center) };
+    return { ...patrol, mesh, ...tangentBasis(patrol.center), mode: 'patrol', chaseTime: 0, disabled: false };
   });
 
   const minimap = createMinimap();
+  minimap.setVisible(false); // stays hidden until the crash cutscene ends
 
-  let state = 'intro';
+  let state = 'cutscene';
+  let cutsceneElapsed = 0;
+  let cutsceneDone = false;
+  let cutsceneFlashed = false;
+  const cutsceneShipPos = new THREE.Vector3();
+  const cutsceneWobbleEuler = new THREE.Euler();
+  const cutsceneWobbleQuat = new THREE.Quaternion();
+
+  // Trails from the ship the whole time it's falling, then tapers off into
+  // an occasional wisp from the wreck — runs on real time (not gated to the
+  // cutscene state) so the tail keeps drifting once gameplay has started.
+  const smokeParticles = []; // { mesh, age, lifetime, velocity, baseOpacity }
+  let smokeElapsed = 0;
+  let smokeSpawnTimer = 0;
 
   function announce(text) {
     announceObjective(text);
@@ -253,6 +371,8 @@ export async function createGroundScene() {
     finderCollected = false;
     keysCollected = 0;
     shipRepaired = false;
+    fuelSecured = false;
+    hideSlidingPuzzle();
     scene.add(finderMesh);
     for (const key of keyPickups) {
       key.collected = false;
@@ -260,6 +380,11 @@ export async function createGroundScene() {
     }
     readyRing.material.color.set(0x888888);
     readyRing.material.opacity = 0.45;
+    for (const drone of drones) {
+      drone.mode = 'patrol';
+      drone.chaseTime = 0;
+      drone.disabled = false;
+    }
     setKeysDisplay(0, keyPickups.length);
     state = 'playing';
     announce('You were caught. Restarting the search — find the key finder first.');
@@ -275,17 +400,104 @@ export async function createGroundScene() {
     );
   }
 
-  hideHud();
-  setKeysDisplay(0, keyPickups.length);
-  showOverlay(
-    'A Quiet Planet',
-    'Your spaceship (nearby!) needs repairing. First find the key finder device, then use it to track down the 3 hidden keys, then return to the ship and press E.\nTwo of the keys are guarded by patrol drones — touching one is fatal.\n\nW/↑: Walk   S/↓: Back   A/D: Turn   Shift: Run   Space: Jump   E: Interact',
-    'Begin',
-    () => {
-      state = 'playing';
-      announce('Objective: find the key finder device nearby.');
-    },
-  );
+  function finishCutscene() {
+    minimap.setVisible(true);
+    state = 'intro';
+    setKeysDisplay(0, keyPickups.length);
+    showOverlay(
+      'A Quiet Planet',
+      'Your spaceship (nearby!) needs repairing. First find the key finder device, then use it to track down the 3 hidden keys, then return to the ship and press E.\nTwo of the keys are guarded by patrol drones — get too close and they\'ll chase you down. Touching one is fatal, but you can outrun them.\n\nW/↑: Walk   S/↓: Back   A/D: Turn   Shift: Run   Space: Jump   E: Interact',
+      'Begin',
+      () => {
+        state = 'playing';
+        announce('Objective: find the key finder device nearby.');
+      },
+    );
+  }
+
+  // Drives the whole crash sequence directly by setting camera.position/
+  // lookAt each frame — the normal player-follow updateCamera() is skipped
+  // entirely while state === 'cutscene' (see update() below).
+  function updateCutscene(dt, camera) {
+    cutsceneElapsed += dt;
+    const t = Math.min(1, cutsceneElapsed / CUTSCENE_DURATION);
+
+    if (ship) {
+      const te = t * t; // ease-in — falls slowly at first, accelerates in
+
+      // Quadratic Bezier through shipArcControl, so the ship sweeps out on a
+      // banking curve rather than dropping in a straight line.
+      const mt = 1 - te;
+      cutsceneShipPos.set(0, 0, 0)
+        .addScaledVector(shipStartPos, mt * mt)
+        .addScaledVector(shipArcControl, 2 * mt * te)
+        .addScaledVector(shipRestPos, te * te);
+      ship.position.copy(cutsceneShipPos);
+
+      // Tumbling wobble on top of the base orientation slerp, violent at
+      // first and settling out as the ship nears the ground.
+      const wobbleAmp = (1 - t) * (1 - t) * 0.5;
+      cutsceneWobbleEuler.set(
+        Math.sin(cutsceneElapsed * 5.3) * wobbleAmp,
+        Math.sin(cutsceneElapsed * 3.7) * wobbleAmp * 0.6,
+        Math.sin(cutsceneElapsed * 4.1) * wobbleAmp,
+      );
+      cutsceneWobbleQuat.setFromEuler(cutsceneWobbleEuler);
+      ship.quaternion.copy(shipStartQuat).slerp(shipRestQuat, te).multiply(cutsceneWobbleQuat);
+    }
+    const focusPos = ship ? ship.position : shipRestPos
+      ?? SHIP_SPOT.normal.clone().multiplyScalar(PLANET_RADIUS);
+
+    let shake = 0;
+    if (t < 0.3) {
+      // Shot A — wide establishing shot, camera fixed, planet + falling ship both in frame.
+      camera.position.copy(SHIP_SPOT.normal)
+        .multiplyScalar(PLANET_RADIUS + 55)
+        .addScaledVector(shipBasis.u, 45)
+        .addScaledVector(shipBasis.v, 10);
+      camera.up.copy(SHIP_SPOT.normal);
+      camera.lookAt(focusPos);
+    } else if (t < 0.55) {
+      // Shot B — tracking shot, trailing behind and above the ship.
+      camera.position.copy(focusPos)
+        .addScaledVector(shipBasis.u, -14)
+        .addScaledVector(SHIP_SPOT.normal, 8);
+      camera.up.copy(SHIP_SPOT.normal);
+      camera.lookAt(focusPos);
+    } else if (t < 0.85) {
+      // Shot C — close chase through atmosphere entry, shake ramping up.
+      camera.position.copy(focusPos)
+        .addScaledVector(shipBasis.u, -7)
+        .addScaledVector(SHIP_SPOT.normal, 3);
+      camera.up.copy(SHIP_SPOT.normal);
+      camera.lookAt(focusPos);
+      shake = THREE.MathUtils.mapLinear(t, 0.55, 0.85, 0, 0.35);
+    } else {
+      // Shot D — low fixed angle on the crash site; shake spikes on impact.
+      camera.position.copy(SHIP_SPOT.normal)
+        .multiplyScalar(PLANET_RADIUS + 2)
+        .addScaledVector(shipBasis.u, 7)
+        .addScaledVector(shipBasis.v, 4);
+      camera.up.copy(SHIP_SPOT.normal);
+      camera.lookAt(focusPos);
+      shake = THREE.MathUtils.mapLinear(Math.min(t, 0.97), 0.85, 0.97, 0.35, 1.3);
+      if (t >= 0.97 && !cutsceneFlashed) {
+        cutsceneFlashed = true;
+        flashScreenWhite(300);
+      }
+    }
+
+    if (shake > 0) {
+      camera.position.x += (Math.random() - 0.5) * shake;
+      camera.position.y += (Math.random() - 0.5) * shake;
+      camera.position.z += (Math.random() - 0.5) * shake;
+    }
+
+    if (t >= 1 && !cutsceneDone) {
+      cutsceneDone = true;
+      finishCutscene();
+    }
+  }
 
   function updateMovement(dt) {
     let turn = 0;
@@ -313,6 +525,7 @@ export async function createGroundScene() {
 
     const newPos = walker.getPosition(PLANET_RADIUS);
     for (const drone of drones) {
+      if (drone.disabled) continue;
       if (newPos.distanceTo(drone.mesh.position) < PLAYER_COLLISION_RADIUS + DRONE_HAZARD_RADIUS) {
         handleDeath();
         return;
@@ -321,7 +534,6 @@ export async function createGroundScene() {
 
     if (consumeJumpPress() && jumpHeight <= 0) {
       jumpVelocity = JUMP_SPEED;
-      astronaut.fadeTo('Jump', { duration: 0.1 });
     }
     jumpVelocity -= GRAVITY * dt;
     jumpHeight += jumpVelocity * dt;
@@ -336,8 +548,13 @@ export async function createGroundScene() {
       orientQuat.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), astronaut.modelForwardOffset));
     }
     astronaut.object3D.quaternion.copy(orientQuat);
-    if (jumpHeight <= 0) {
+    if (jumpHeight > 0) {
+      astronaut.fadeTo('Run', { duration: 0.12 });
+      const squashT = Math.min(1, jumpHeight / JUMP_SQUASH_REFERENCE);
+      astronaut.object3D.scale.y = 1 - JUMP_SQUASH_AMOUNT * squashT;
+    } else {
       astronaut.fadeTo(anim, { duration: 0.2 });
+      astronaut.object3D.scale.y = 1;
     }
   }
 
@@ -373,19 +590,53 @@ export async function createGroundScene() {
           duration: 0.15, loop: false,
           onFinished: () => astronaut.fadeTo('Idle', { duration: 0.2 }),
         });
+        // Any drone guarding this specific key (patrol center === key spot)
+        // has nothing left to protect, so it stands down for the rest of the run.
+        const guard = drones.find((drone) => drone.center === key.normal);
+        let guardMessage = '';
+        if (guard) {
+          guard.disabled = true;
+          guard.mode = 'patrol';
+          guard.chaseTime = 0;
+          guardMessage = 'Guardian drone deactivated — that key is safe now. ';
+        }
         if (keysCollected >= keyPickups.length) {
-          announce('All keys recovered. Objective: return to the spaceship and press E to repair it.');
+          announce(`${guardMessage}All keys recovered. Objective: return to the spaceship and press E to repair it.`);
         } else {
+          if (guardMessage) announce(guardMessage.trim());
           flashToast(`Key found! (${keysCollected}/${keyPickups.length})`, 2000);
         }
       }
     }
   }
 
-  function updateShipInteract() {
-    if (!consumeInteractPress() || shipRepaired) return;
-    const dist = PLANET_RADIUS * walker.normal.angleTo(SHIP_SPOT.normal);
-    if (dist > SHIP_INTERACT_RADIUS) return;
+  // A single consumeInteractPress() per frame is shared across both
+  // interactables (ship and small volcano) — calling it twice would silently
+  // drop whichever check ran second, since the press is one-shot.
+  function updateInteract() {
+    if (!consumeInteractPress()) return;
+
+    const shipDist = PLANET_RADIUS * walker.normal.angleTo(SHIP_SPOT.normal);
+    if (shipDist <= SHIP_INTERACT_RADIUS) {
+      handleShipInteract();
+      return;
+    }
+
+    const volcanoDist = PLANET_RADIUS * walker.normal.angleTo(SMALL_VOLCANO_SPOT.normal);
+    if (volcanoDist <= SMALL_VOLCANO_INTERACT_RADIUS) {
+      handleFuelPuzzleInteract();
+    }
+  }
+
+  function handleShipInteract() {
+    if (shipRepaired && fuelSecured) {
+      onLaunch?.(1, 1);
+      return;
+    }
+    if (shipRepaired) {
+      flashToast('Still need fuel — find the small volcano nearby and solve its puzzle.', 2400);
+      return;
+    }
     if (!finderCollected) {
       flashToast('Find the key finder device first.', 2200);
       return;
@@ -399,11 +650,29 @@ export async function createGroundScene() {
     readyRing.material.opacity = 0.85;
     showOverlay(
       'Spaceship Repaired!',
-      'You gathered all 3 keys and got the ship running again.\n\nKeep exploring the planet — launch is coming in a future update.',
+      'You gathered all 3 keys and got the ship running again.\n\nIt still needs fuel. Find the small volcano near the big one and solve the puzzle there to secure a fuel cell.',
       'Nice!',
       () => {},
     );
-    announce('Spaceship repaired. Great work out there.');
+    announce('Spaceship repaired. Objective: find the small volcano nearby and solve its puzzle to secure fuel.');
+  }
+
+  function handleFuelPuzzleInteract() {
+    if (fuelSecured) {
+      flashToast('Fuel cell already secured.', 1800);
+      return;
+    }
+    if (!shipRepaired) {
+      flashToast('Nothing to do here yet — repair the spaceship first.', 2200);
+      return;
+    }
+    state = 'puzzle';
+    showSlidingPuzzle(() => {
+      fuelSecured = true;
+      state = 'playing';
+      flashToast('Fuel cell secured!', 2200);
+      announce('Fuel secured. Return to the spaceship and press E to launch.');
+    });
   }
 
   function updateMinimap() {
@@ -426,20 +695,50 @@ export async function createGroundScene() {
     if (finderCollected) {
       for (const key of keyPickups) if (!key.collected) addBlip(key.normal, '#7be0ff', 4);
     }
-    for (const drone of drones) addBlip(drone.mesh.position.clone().normalize(), '#ff4d4d', 4);
+    if (shipRepaired && !fuelSecured) addBlip(SMALL_VOLCANO_SPOT.normal, '#ff8c42', 5);
+    for (const drone of drones) {
+      if (drone.disabled) continue;
+      addBlip(drone.mesh.position.clone().normalize(), '#ff4d4d', 4);
+    }
 
     minimap.draw(blips);
   }
 
-  function updateDrones(dt, elapsed) {
+  const droneChaseTarget = new THREE.Vector3();
+  const droneOrbitTarget = new THREE.Vector3();
+
+  function updateDrones(dt, elapsed, playerPos, playerNormal) {
     for (const drone of drones) {
-      const t = elapsed * drone.speed + drone.phase;
-      drone.mesh.position.copy(drone.center)
-        .multiplyScalar(PLANET_RADIUS + drone.altitude)
-        .addScaledVector(drone.u, Math.cos(t) * drone.orbitRadius)
-        .addScaledVector(drone.v, Math.sin(t) * drone.orbitRadius);
-      for (const r of drone.mesh.userData.rotors) r.rotation.y += dt * 30;
-      drone.mesh.userData.blinkLight.visible = Math.floor(elapsed * 4) % 2 === 0;
+      if (drone.disabled) {
+        orbitPosition(drone, elapsed, droneOrbitTarget);
+        moveToward(drone.mesh.position, droneOrbitTarget, DRONE_PATROL_CATCH_SPEED * dt);
+        for (const r of drone.mesh.userData.rotors) r.rotation.y += dt * 30;
+        drone.mesh.userData.blinkLight.visible = false;
+        continue;
+      }
+
+      const distToPlayer = drone.mesh.position.distanceTo(playerPos);
+      if (drone.mode === 'patrol' && distToPlayer < DRONE_AGGRO_RADIUS) {
+        drone.mode = 'chase';
+        drone.chaseTime = 0;
+        if (state === 'playing') flashToast('A drone spotted you — run!', 1800);
+      } else if (drone.mode === 'chase'
+        && (distToPlayer > DRONE_DISENGAGE_RADIUS || drone.chaseTime > DRONE_MAX_CHASE_SECONDS)) {
+        drone.mode = 'patrol';
+      }
+
+      if (drone.mode === 'chase') {
+        drone.chaseTime += dt;
+        droneChaseTarget.copy(playerNormal).multiplyScalar(PLANET_RADIUS + DRONE_CHASE_ALTITUDE);
+        moveToward(drone.mesh.position, droneChaseTarget, DRONE_CHASE_SPEED * dt);
+      } else {
+        orbitPosition(drone, elapsed, droneOrbitTarget);
+        moveToward(drone.mesh.position, droneOrbitTarget, DRONE_PATROL_CATCH_SPEED * dt);
+      }
+
+      const chasing = drone.mode === 'chase';
+      for (const r of drone.mesh.userData.rotors) r.rotation.y += dt * (chasing ? 50 : 30);
+      drone.mesh.userData.blinkLight.visible = Math.floor(elapsed * (chasing ? 8 : 4)) % 2 === 0;
     }
   }
 
@@ -489,22 +788,77 @@ export async function createGroundScene() {
     }
   }
 
+  function spawnSmokePuff() {
+    const puff = createSmokePuff();
+    puff.position.copy(ship.position).addScaledVector(
+      new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5),
+      0.4,
+    );
+    scene.add(puff);
+    const velocity = new THREE.Vector3()
+      .addScaledVector(SHIP_SPOT.normal, 0.8 + Math.random() * 0.6)
+      .addScaledVector(shipBasis.u, (Math.random() - 0.5) * 0.6)
+      .addScaledVector(shipBasis.v, (Math.random() - 0.5) * 0.6);
+    smokeParticles.push({
+      mesh: puff, age: 0, lifetime: 1.2 + Math.random() * 0.6, velocity, baseOpacity: 0.5,
+    });
+  }
+
+  // Heavy smoke while the ship is actually falling, tapering to an
+  // occasional wisp from the wreck for a few seconds after impact, then
+  // stopping — existing puffs still finish fading out on their own.
+  function updateSmoke(dt) {
+    if (ship) {
+      smokeElapsed += dt;
+      const inFall = smokeElapsed < CUTSCENE_DURATION;
+      const inTail = smokeElapsed < CUTSCENE_DURATION + SMOKE_TAIL_DURATION;
+      if (inFall || inTail) {
+        smokeSpawnTimer -= dt;
+        if (smokeSpawnTimer <= 0) {
+          smokeSpawnTimer = inFall ? SMOKE_FALL_INTERVAL : SMOKE_TAIL_INTERVAL;
+          spawnSmokePuff();
+        }
+      }
+    }
+
+    for (let i = smokeParticles.length - 1; i >= 0; i--) {
+      const p = smokeParticles[i];
+      p.age += dt;
+      if (p.age >= p.lifetime) {
+        scene.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        p.mesh.material.dispose();
+        smokeParticles.splice(i, 1);
+        continue;
+      }
+      const lt = p.age / p.lifetime;
+      p.mesh.position.addScaledVector(p.velocity, dt);
+      p.mesh.material.opacity = p.baseOpacity * (1 - lt);
+      p.mesh.scale.setScalar(1 + lt * 1.8);
+    }
+  }
+
   return {
     scene,
     update(dt, elapsed, camera) {
-      // Each gameplay step re-checks state since updateMovement can flip it
-      // to 'dead' mid-frame (drone contact) and the rest should stop too.
-      if (state === 'playing') updateMovement(dt);
-      if (state === 'playing') updateFinderPickup();
-      if (state === 'playing') updateKeyPickups(dt);
-      if (state === 'playing') updateShipInteract();
+      if (state === 'cutscene') {
+        updateCutscene(dt, camera);
+      } else {
+        // Each gameplay step re-checks state since updateMovement can flip
+        // it to 'dead' mid-frame (drone contact) and the rest should stop too.
+        if (state === 'playing') updateMovement(dt);
+        if (state === 'playing') updateFinderPickup();
+        if (state === 'playing') updateKeyPickups(dt);
+        if (state === 'playing') updateInteract();
+        updateCamera(dt, camera);
+      }
       astronaut.update(dt);
-      updateCamera(dt, camera);
       updateShadowLight();
       updateSatellite(elapsed);
       updateClouds(dt);
       updateEarth(dt);
-      updateDrones(dt, elapsed);
+      updateDrones(dt, elapsed, walker.getPosition(PLANET_RADIUS), walker.normal);
+      updateSmoke(dt);
       updateWind(elapsed);
       updateMinimap();
     },
@@ -534,9 +888,9 @@ function hitsObstacle(normal, obstacles) {
 async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, windSwayables) {
   const tasks = [
     scatterForest(scene, obstacles, windSwayables),
-    placeShip(scene, obstacles),
     placeHouses(scene, obstacles),
     placeVolcano(scene, obstacles),
+    placeSmallVolcano(scene, obstacles),
     placeWildlife(scene),
     loadDecoration('/assets/satellite.glb', 3.2).then((wrapper) => {
       wrapper.position.y -= 1.6; // center it rather than feet-at-origin, since it floats in space
@@ -590,6 +944,9 @@ async function scatterForest(scene, obstacles, windSwayables) {
   }));
 }
 
+// Loaded and placed eagerly (awaited, not part of populatePlanet's
+// fire-and-forget tasks) because the crash cutscene needs the actual mesh
+// in hand to animate falling into its final resting transform.
 async function placeShip(scene, obstacles) {
   try {
     const ship = await loadDecoration('/assets/spaceship.glb', 6.5);
@@ -597,9 +954,11 @@ async function placeShip(scene, obstacles) {
     orientToNormal(ship, SHIP_SPOT.normal, 0);
     scene.add(ship);
     obstacles.push({ normal: SHIP_SPOT.normal.clone(), radius: SHIP_BLOCK_RADIUS });
+    return ship;
   } catch (err) {
     console.error('Failed to place spaceship:', err);
     flashToast('Spaceship model failed to load — see browser console (F12).', 5000);
+    return null;
   }
 }
 
@@ -625,6 +984,14 @@ async function placeVolcano(scene, obstacles) {
   obstacles.push({ normal: VOLCANO_SPOT.normal.clone(), radius: VOLCANO_BLOCK_RADIUS });
 }
 
+async function placeSmallVolcano(scene, obstacles) {
+  const volcano = await loadDecoration('/assets/volcano.glb', 3.2);
+  placeOnSurface(volcano, SMALL_VOLCANO_SPOT.normal, EMBED.smallVolcano);
+  orientToNormal(volcano, SMALL_VOLCANO_SPOT.normal, 1.4);
+  scene.add(volcano);
+  obstacles.push({ normal: SMALL_VOLCANO_SPOT.normal.clone(), radius: SMALL_VOLCANO_BLOCK_RADIUS });
+}
+
 async function placeWildlife(scene) {
   await Promise.all(WILDLIFE_SPOTS.map(async (spot) => {
     try {
@@ -636,6 +1003,14 @@ async function placeWildlife(scene) {
       console.error(`Failed to place ${spot.url}:`, err);
     }
   }));
+}
+
+function createSmokePuff() {
+  const geo = new THREE.SphereGeometry(0.5 + Math.random() * 0.35, 6, 6);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x2c2c2c, transparent: true, opacity: 0.5, depthWrite: false,
+  });
+  return new THREE.Mesh(geo, mat);
 }
 
 function createCloudPuff() {
