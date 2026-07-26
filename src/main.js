@@ -1,8 +1,16 @@
 import * as THREE from 'three';
 import { initInput } from './game/input.js';
-import { showOverlay, showHud, hideKeysDisplay } from './game/hud.js';
+import {
+  showOverlay, showHud, hideKeysDisplay, setLoadingProgress, hideLoadingScreen,
+} from './game/hud.js';
 import { createGroundScene } from './scenes/groundScene.js';
 import { createAscentScene } from './scenes/ascentScene.js';
+
+// All GLTFLoader instances in the game (character.js, models.js) use the
+// default manager, so this tracks every model fetch across the whole app.
+THREE.DefaultLoadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+  setLoadingProgress(itemsTotal > 0 ? (itemsLoaded / itemsTotal) * 100 : 0);
+};
 
 const canvas = document.getElementById('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -48,10 +56,12 @@ async function startGroundPhase() {
     onLaunch: (collected, total) => startAscentPhase(collected, total),
   });
   activeScene = ground;
+  hideLoadingScreen();
 }
 
 startGroundPhase().catch((err) => {
   console.error('Failed to start ground phase:', err);
+  hideLoadingScreen();
   showOverlay(
     'Something went wrong',
     `The planet scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,

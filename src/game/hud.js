@@ -7,6 +7,20 @@ const [fuelLabel, altitudeLabel] = barGroups;
 
 const hud = document.getElementById('hud');
 
+const loadingScreen = document.getElementById('loading-screen');
+const loadingText = document.getElementById('loading-text');
+const loadingBarFill = document.getElementById('loading-bar-fill');
+
+export function setLoadingProgress(percent) {
+  const clamped = Math.max(0, Math.min(100, percent));
+  loadingBarFill.style.width = `${clamped}%`;
+  loadingText.textContent = `Loading assets… ${Math.round(clamped)}%`;
+}
+
+export function hideLoadingScreen() {
+  loadingScreen.classList.add('hidden');
+}
+
 const overlay = document.getElementById('message-overlay');
 const messageTitle = document.getElementById('message-title');
 const messageBody = document.getElementById('message-body');
