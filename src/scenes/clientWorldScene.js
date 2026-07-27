@@ -233,6 +233,11 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   const stars = createStarfield(12000, 700, true);
   stars.material.size = 1.9;
   stars.material.sizeAttenuation = true;
+  // Ground fog only reaches 170 units out, but the starfield sits
+  // 190-700 units away — fogged points fully wash out to the fog color at
+  // that range, which made every star invisible. Stars are a sky backdrop,
+  // not atmosphere, so exempt them from fog entirely.
+  stars.material.fog = false;
   scene.add(stars);
 
   // A second, closer, sparser layer of bigger points reads as a handful of
@@ -240,6 +245,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   const nearStars = createStarfield(500, 380, true);
   nearStars.material.size = 3.2;
   nearStars.material.sizeAttenuation = true;
+  nearStars.material.fog = false;
   scene.add(nearStars);
 
   const sunMesh = createSun(0xffc59c, 10);

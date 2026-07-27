@@ -70,7 +70,12 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
   sun.position.set(40, 80, 30);
   scene.add(sun);
 
-  scene.add(createStarfield());
+  // Fog only reaches 260 units out, but the default starfield spread puts
+  // points 450-900 units away — exempt stars from fog so they aren't fully
+  // washed out to the fog color before reaching the camera.
+  const ascentStars = createStarfield();
+  ascentStars.material.fog = false;
+  scene.add(ascentStars);
 
   const earth = createEarth(EARTH_RADIUS);
   earth.position.set(0, -EARTH_RADIUS, 0);

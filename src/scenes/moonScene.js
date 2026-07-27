@@ -189,7 +189,12 @@ export async function createMoonScene({ onComplete } = {}) {
   // fullSphere=false (which clusters stars in the world's fixed +Y
   // hemisphere, meant for a flat scene with one constant "up") would leave
   // stars missing from view depending on where you're standing.
-  scene.add(createStarfield(2400, 900, true));
+  // Fog only reaches 230 units out, but the starfield sits 450-900 units
+  // away, so fogged points would fully wash out to the fog color before
+  // ever reaching camera — exempt stars from fog, they're a sky backdrop.
+  const moonStars = createStarfield(2400, 900, true);
+  moonStars.material.fog = false;
+  scene.add(moonStars);
 
   // Home planet — the same distant point glimpsed from the crash site,
   // now huge and close: the payoff for the whole ground-then-orbit arc.

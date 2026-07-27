@@ -88,6 +88,29 @@ export function createEarth(radius) {
   return group;
 }
 
+// Plain THREE.Points render as flat squares (gl_PointCoord is a square by
+// default) unless the material has a sprite texture masking each point down
+// to a circle — barely visible at size ~1.4 but obviously square once a
+// starfield's point size gets bigger. Built once and shared by every
+// starfield instance.
+let starSpriteTexture = null;
+function getStarSprite() {
+  if (starSpriteTexture) return starSpriteTexture;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  starSpriteTexture = new THREE.CanvasTexture(canvas);
+  return starSpriteTexture;
+}
+
 // fullSphere=false scatters stars over the upper hemisphere only (for a flat
 // ground scene with sky above); fullSphere=true surrounds the camera on all
 // sides (for a small planet floating in space, viewable from any angle).
@@ -103,7 +126,14 @@ export function createStarfield(count = 2000, spread = 900, fullSphere = false) 
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.4, sizeAttenuation: true });
+  const mat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 1.4,
+    sizeAttenuation: true,
+    map: getStarSprite(),
+    transparent: true,
+    depthWrite: false,
+  });
   return new THREE.Points(geo, mat);
 }
 
