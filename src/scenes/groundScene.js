@@ -381,6 +381,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   let cutsceneElapsed = 0;
   let cutsceneDone = false;
   let cutsceneFlashed = false;
+  flashToast('Press E to skip', CUTSCENE_DURATION * 1000);
   const cutsceneShipPos = new THREE.Vector3();
   const cutsceneWobbleEuler = new THREE.Euler();
   const cutsceneWobbleQuat = new THREE.Quaternion();
@@ -456,7 +457,8 @@ export async function createGroundScene({ onLaunch } = {}) {
   // lookAt each frame — the normal player-follow updateCamera() is skipped
   // entirely while state === 'cutscene' (see update() below).
   function updateCutscene(dt, camera) {
-    cutsceneElapsed += dt;
+    if (consumeInteractPress()) cutsceneElapsed = CUTSCENE_DURATION;
+    else cutsceneElapsed += dt;
     const t = Math.min(1, cutsceneElapsed / CUTSCENE_DURATION);
 
     if (ship) {

@@ -20,6 +20,18 @@ const CORTHANA_VOICE_NAMES = [
 ];
 
 let corthanaVoice = null;
+let voiceMuted = false;
+
+// Settings-menu "Mute Voice" toggle — cancels anything mid-utterance so
+// muting doesn't just silence future lines but leaves the current one
+// finishing out loud.
+export function setVoiceMuted(muted) {
+  voiceMuted = muted;
+  if (muted && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    duckMusic(false);
+  }
+}
 
 function pickVoiceFrom(names, voices) {
   for (const name of names) {
@@ -66,6 +78,10 @@ function speakWith(text, voice, pitch, rate, onEnd) {
 // Corthana's voice — cancels anything currently queued/speaking first, so a
 // fast string of objective updates doesn't pile up a backlog of stale lines.
 export function speak(text, onEnd) {
+  if (voiceMuted) {
+    if (onEnd) onEnd();
+    return;
+  }
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
     if (onEnd) onEnd();
     return;

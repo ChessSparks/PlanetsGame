@@ -393,7 +393,7 @@ export async function createMoonScene({ onComplete } = {}) {
         spawnCrystals();
         playPickupChime();
         flashToast('Deposits located!', 2200);
-        announce('Deposits located. Whatever these are for, it isn\'t the ship — she\'s already flightworthy. Objective: collect the crystal deposits.');
+        announce('Deposits located. Whatever these are for, it isn\'t the ship — she\'s already flightworthy. My guess is they\'re headed for power generation. That\'s almost never good news. Objective: collect the crystal deposits.');
       },
       () => {
         state = 'playing';

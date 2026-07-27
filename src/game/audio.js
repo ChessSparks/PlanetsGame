@@ -18,7 +18,14 @@ export function unlockAudio() {
   if (c && c.state === 'suspended') c.resume();
 }
 
+let sfxMuted = false;
+
+export function setSfxMuted(muted) {
+  sfxMuted = muted;
+}
+
 export function playPickupChime() {
+  if (sfxMuted) return;
   const c = getContext();
   if (!c || c.state !== 'running') return;
   const now = c.currentTime;
@@ -40,6 +47,21 @@ export function playPickupChime() {
 let musicStarted = false;
 let musicGain = null;
 const MUSIC_LEVEL = 0.045;
+let musicVolume = 0.7; // user-adjustable multiplier (0-1) via the settings menu
+let musicDucked = false;
+
+function applyMusicLevel() {
+  if (!musicGain || !ctx) return;
+  const target = MUSIC_LEVEL * musicVolume * (musicDucked ? 0.2 : 1);
+  musicGain.gain.linearRampToValueAtTime(target, ctx.currentTime + 0.35);
+}
+
+// Settings-menu volume slider — scales the whole ambient pad, independent
+// of the duck-while-speaking behavior below (applyMusicLevel combines both).
+export function setMusicVolume(volume) {
+  musicVolume = Math.max(0, Math.min(1, volume));
+  applyMusicLevel();
+}
 
 // A slowly-breathing ambient pad (a handful of detuned, LFO-modulated
 // oscillators sustained forever, no clips/looping needed) — there are no
@@ -55,7 +77,7 @@ export function startAmbientMusic() {
   musicGain = master;
   master.gain.value = 0;
   master.connect(c.destination);
-  master.gain.linearRampToValueAtTime(MUSIC_LEVEL, c.currentTime + 4);
+  master.gain.linearRampToValueAtTime(MUSIC_LEVEL * musicVolume, c.currentTime + 4);
 
   const chordFreqs = [55, 82.5, 110, 138.6]; // sparse open chord, low register
   chordFreqs.forEach((freq, i) => {
@@ -87,12 +109,12 @@ export function startAmbientMusic() {
 // volume=1.0 ceiling — ducking the music out of the way while a character
 // is speaking is what actually makes the voice read as more prominent.
 export function duckMusic(active) {
-  if (!musicGain || !ctx) return;
-  const target = active ? MUSIC_LEVEL * 0.2 : MUSIC_LEVEL;
-  musicGain.gain.linearRampToValueAtTime(target, ctx.currentTime + 0.35);
+  musicDucked = active;
+  applyMusicLevel();
 }
 
 export function playDroneAlert() {
+  if (sfxMuted) return;
   const c = getContext();
   if (!c || c.state !== 'running') return;
   const now = c.currentTime;

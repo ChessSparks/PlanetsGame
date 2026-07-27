@@ -3,11 +3,15 @@ import { initInput } from './game/input.js';
 import {
   showOverlay, showHud, hideKeysDisplay, setLoadingProgress, hideLoadingScreen, showLoadingScreen,
 } from './game/hud.js';
-import { createGroundScene } from './scenes/groundScene.js';
-import { createAscentScene } from './scenes/ascentScene.js';
-import { createMoonScene } from './scenes/moonScene.js';
-import { createClientWorldScene } from './scenes/clientWorldScene.js';
-import { createTravelCutscene } from './scenes/travelCutscene.js';
+import { showTitleScreen } from './game/titleScreen.js';
+import { initSettingsMenu } from './game/settingsMenu.js';
+
+// Each scene is dynamically imported at the point it's actually needed
+// (see the phase-starter functions below) rather than statically up top —
+// Vite splits each into its own chunk, so e.g. the client-world level's
+// entire city-generation code never has to load for a player who never
+// gets past the ground level. Previously this was one 670KB bundle loaded
+// entirely up front regardless of how far the player actually got.
 
 // All GLTFLoader instances in the game (character.js, models.js) use the
 // default manager, so this tracks every model fetch across the whole app.
@@ -51,6 +55,7 @@ function teardownActiveScene() {
 // a cutscene doesn't just leave the player staring at a dead screen.
 async function startTravelPhase(config, next) {
   teardownActiveScene();
+  const { createTravelCutscene } = await import('./scenes/travelCutscene.js');
   const travel = await createTravelCutscene({
     ...config,
     onComplete: () => next().catch((err) => {
@@ -76,6 +81,7 @@ async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
   // The ship model is already cached from the ground scene (same URL), so
   // this resolves near-instantly in practice — still awaited properly since
   // createAscentScene is async now that it loads that model itself.
+  const { createAscentScene } = await import('./scenes/ascentScene.js');
   const ascent = await createAscentScene({
     startFuel,
     onRestart: () => startGroundPhase(),
@@ -110,6 +116,7 @@ async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
 async function startMoonPhase() {
   camera.position.set(0, 12, 6.5);
   teardownActiveScene();
+  const { createMoonScene } = await import('./scenes/moonScene.js');
   const moon = await createMoonScene({
     onComplete: () => startTravelPhase({
       fromLabel: 'the Moon',
@@ -154,6 +161,7 @@ async function startClientWorldPhase() {
       () => startGroundPhase().catch((e) => console.error(e)),
     );
   });
+  const { createClientWorldScene } = await import('./scenes/clientWorldScene.js');
   const clientWorld = await createClientWorldScene({
     onDeliver: handleReturnTrip,
     onRefuseEscape: handleReturnTrip,
@@ -165,6 +173,7 @@ async function startClientWorldPhase() {
 async function startGroundPhase() {
   camera.position.set(0, 25, 6.5);
   teardownActiveScene();
+  const { createGroundScene } = await import('./scenes/groundScene.js');
   const ground = await createGroundScene({
     onLaunch: (collected, total) => startAscentPhase(collected, total).catch((err) => {
       console.error('Failed to start ascent phase:', err);
@@ -258,15 +267,30 @@ function initDevMenu() {
 }
 
 initDevMenu();
-startGroundPhase().catch((err) => {
-  console.error('Failed to start ground phase:', err);
-  hideLoadingScreen();
-  showOverlay(
-    'Something went wrong',
-    `The planet scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
-    'Retry',
-    () => startGroundPhase().catch((e) => console.error(e)),
-  );
+
+// Escape (or the gear button) opens Settings from anywhere and freezes
+// gameplay updates while it's up — see the paused check in animate() below.
+let paused = false;
+initSettingsMenu({
+  onOpen: () => { paused = true; },
+  onClose: () => { paused = false; },
+});
+
+// The title screen's Start click is the game's first real user gesture —
+// asset loading (and the loading screen) only begins once it fires, rather
+// than starting immediately on page load before the player has done anything.
+showTitleScreen(() => {
+  showLoadingScreen();
+  startGroundPhase().catch((err) => {
+    console.error('Failed to start ground phase:', err);
+    hideLoadingScreen();
+    showOverlay(
+      'Something went wrong',
+      `The planet scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+      'Retry',
+      () => startGroundPhase().catch((e) => console.error(e)),
+    );
+  });
 });
 
 function animate() {
@@ -282,7 +306,7 @@ function animate() {
   // regardless of what update() does to the outer variable.
   const scene = activeScene;
   if (scene) {
-    scene.update(dt, elapsed, camera);
+    if (!paused) scene.update(dt, elapsed, camera);
     renderer.render(scene.scene, camera);
   }
 }
