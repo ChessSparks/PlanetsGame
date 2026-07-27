@@ -354,3 +354,72 @@ html, body {
 #starchart-close:hover {
   filter: brightness(1.2);
 }
+
+#choice-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 2, 6, 0.9);
+  backdrop-filter: blur(2px);
+  z-index: 35;
+}
+
+#choice-overlay.hidden {
+  display: none;
+}
+
+#choice-box {
+  text-align: center;
+  color: #eaf6ff;
+  max-width: 520px;
+  padding: 34px 42px;
+  border-radius: 16px;
+  background: rgba(18, 8, 10, 0.95);
+  border: 1px solid rgba(255, 110, 90, 0.4);
+  box-shadow: 0 0 50px rgba(255, 80, 60, 0.25);
+}
+
+#choice-box h1 {
+  font-size: 26px;
+  margin-bottom: 14px;
+  letter-spacing: 1px;
+  color: #ffb3a0;
+}
+
+#choice-box p {
+  font-size: 15px;
+  line-height: 1.55;
+  opacity: 0.92;
+  margin-bottom: 26px;
+  white-space: pre-line;
+}
+
+#choice-buttons {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.choice-btn {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 26px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(90deg, #4dd0ff, #6d8dff);
+  color: #071024;
+  letter-spacing: 0.4px;
+}
+
+.choice-btn:hover {
+  filter: brightness(1.12);
+}
+
+.choice-btn.danger {
+  background: linear-gradient(90deg, #ff6a4d, #ff3a3a);
+  color: #1a0603;
+}

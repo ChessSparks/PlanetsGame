@@ -6,6 +6,7 @@ import {
 import { createGroundScene } from './scenes/groundScene.js';
 import { createAscentScene } from './scenes/ascentScene.js';
 import { createMoonScene } from './scenes/moonScene.js';
+import { createClientWorldScene } from './scenes/clientWorldScene.js';
 
 // All GLTFLoader instances in the game (character.js, models.js) use the
 // default manager, so this tracks every model fetch across the whole app.
@@ -78,9 +79,28 @@ async function startMoonPhase() {
   camera.position.set(0, 12, 6.5);
   teardownActiveScene();
   const moon = await createMoonScene({
-    onComplete: () => startGroundPhase(),
+    onComplete: () => startClientWorldPhase().catch((err) => {
+      console.error('Failed to start client-world phase:', err);
+      showOverlay(
+        'Something went wrong',
+        `The next scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+        'Retry',
+        () => startClientWorldPhase().catch((e) => console.error(e)),
+      );
+    }),
   });
   activeScene = moon;
+  hideLoadingScreen();
+}
+
+async function startClientWorldPhase() {
+  camera.position.set(0, 30, 8);
+  teardownActiveScene();
+  const clientWorld = await createClientWorldScene({
+    onDeliver: () => startGroundPhase(),
+    onRefuseEscape: () => startGroundPhase(),
+  });
+  activeScene = clientWorld;
   hideLoadingScreen();
 }
 
@@ -110,6 +130,7 @@ const PHASE_STARTERS = {
   ground: () => startGroundPhase(),
   ascent: () => startAscentPhase(1, 1),
   moon: () => startMoonPhase(),
+  client: () => startClientWorldPhase(),
 };
 
 function launchPhase(name) {
@@ -154,6 +175,7 @@ function initDevMenu() {
     <button data-phase="ground" type="button" class="dev-menu-btn">Ground</button>
     <button data-phase="ascent" type="button" class="dev-menu-btn">Ascent</button>
     <button data-phase="moon" type="button" class="dev-menu-btn">Moon</button>
+    <button data-phase="client" type="button" class="dev-menu-btn">Client World</button>
   `;
   document.body.appendChild(panel);
 

@@ -78,9 +78,11 @@ const MEADOW_SPOTS = [
   sph(0, -170),
   sph(55, 90),
   sph(-60, -40),
+  sph(20, 150),
+  sph(-70, 20),
 ];
-const MEADOW_GRASS_COUNT = 14; // instances per meadow
-const MEADOW_RADIUS = 4; // arc-length jitter radius (world units) around each center
+const MEADOW_GRASS_COUNT = 30; // instances per meadow
+const MEADOW_RADIUS = 5; // arc-length jitter radius (world units) around each center
 
 // The 3 keys needed to repair the spaceship, spread out to encourage
 // exploring the whole planet. Two of them are guarded by patrol drones.
@@ -176,7 +178,7 @@ const FOREST = [
   { url: '/assets/rock.glb', height: [0.6, 1.8], weight: 4, blockRadiusFactor: 0.5 },
   { url: '/assets/bush.glb', height: [0.6, 1.1], weight: 3, swayAmplitude: 0.06, swaySpeed: 1.1 },
   { url: '/assets/fern.glb', height: [0.4, 0.7], weight: 3, swayAmplitude: 0.09, swaySpeed: 1.4 },
-  { url: '/assets/grass.glb', height: [0.55, 0.85], weight: 3, swayAmplitude: 0.12, swaySpeed: 1.7 },
+  { url: '/assets/grass.glb', height: [0.55, 0.85], weight: 9, swayAmplitude: 0.12, swaySpeed: 1.7 },
   { url: '/assets/plant.glb', height: [0.5, 0.9], weight: 2, swayAmplitude: 0.08, swaySpeed: 1.3 },
 ];
 const FOREST_COUNT = 220;
@@ -651,8 +653,8 @@ export async function createGroundScene({ onLaunch } = {}) {
         // delay, so her speech can never truncate his.
         if (keysCollected === 1) {
           setTimeout(() => {
-            const line = 'It\'s too quiet out here. Where is everybody?';
-            flashToast(`"...${line}"`, 3200);
+            const line = 'Corthana, it\'s too quiet out here. What is happening?';
+            flashToast(`"...${line}"`, 3600);
             speakPlayer(line, () => {
               announce('I\'m not reading any life signs on this planet — nothing, except the plant life. Whatever happened here, it was a long time before we arrived.');
             });
@@ -751,7 +753,6 @@ export async function createGroundScene({ onLaunch } = {}) {
     }
 
     addBlip(SHIP_SPOT.normal, shipRepaired ? '#7bffb0' : '#ffd166', 7, 'ship');
-    addBlip(VOLCANO_SPOT.normal, '#ff5e3a', 6, 'volcano');
     if (!finderCollected) addBlip(KEY_FINDER_SPOT.normal, '#ffb347', 5);
     if (finderCollected) {
       for (const key of keyPickups) if (!key.collected) addBlip(key.normal, '#7be0ff', 4);

@@ -364,9 +364,9 @@ export async function createMoonScene({ onComplete } = {}) {
     }
     state = 'done';
     showOverlay(
-      'Mission Complete',
-      'You gathered every crystal deposit and made it back to the ship.\n\nCorthana: That\'s everything we came for. Well done.',
-      'Play Again',
+      'Crystals Secured',
+      'You gathered every crystal deposit and made it back to the ship.\n\nCorthana: Course is set for the client\'s coordinates. Let\'s go get paid.',
+      'Depart',
       () => onComplete?.(),
     );
   }

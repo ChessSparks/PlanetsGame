@@ -207,6 +207,69 @@ export function createMoonGround(radius) {
   return sphere;
 }
 
+function makeForgeGroundTexture() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#1c1414';
+  ctx.fillRect(0, 0, size, size);
+
+  const patchColors = ['#241818', '#150f0f', '#2a1c1c', '#100c0c'];
+  for (let i = 0; i < 280; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 6 + Math.random() * 20;
+    ctx.fillStyle = patchColors[i % patchColors.length];
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.7, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Glowing molten cracks — thin jagged lines with an orange glow, the
+  // industrial/weaponized counterpart to the moon's painted craters.
+  for (let i = 0; i < 26; i++) {
+    let x = Math.random() * size;
+    let y = Math.random() * size;
+    ctx.strokeStyle = 'rgba(255,120,40,0.85)';
+    ctx.lineWidth = 1.5 + Math.random();
+    ctx.shadowColor = 'rgba(255,110,30,0.9)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    const segments = 4 + Math.floor(Math.random() * 4);
+    for (let s = 0; s < segments; s++) {
+      x += (Math.random() - 0.5) * 60;
+      y += (Math.random() - 0.5) * 60;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 3);
+  return texture;
+}
+
+// A scorched, industrial world — the client's homeworld. Same walkable-
+// sphere convention as createPlanetGround/createMoonGround, but dark ash
+// with glowing molten cracks instead of foliage or craters.
+export function createForgeGround(radius) {
+  const texture = makeForgeGroundTexture();
+  const mat = new THREE.MeshStandardMaterial({ map: texture, color: 0x55504f, roughness: 0.9, metalness: 0.1 });
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 96), mat);
+  sphere.receiveShadow = true;
+  sphere.userData.radius = radius;
+  return sphere;
+}
+
 export function createFuelCell() {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
@@ -272,6 +335,43 @@ export function createDrone() {
 
   group.userData.radius = 1.1;
   group.userData.type = 'drone';
+  return group;
+}
+
+// A hostile reskin of createDrone — same rig (proven working chase/patrol
+// code can drive either one), darker gunmetal-and-red instead of gray, for
+// the client's security sentries on level 4.
+export function createSentry() {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x22181a, metalness: 0.7, roughness: 0.3 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.32, 1.2), bodyMat);
+  group.add(body);
+
+  const armMat = new THREE.MeshStandardMaterial({ color: 0x2c1416, metalness: 0.6, roughness: 0.35 });
+  const rotorPositions = [[0.85, 0, 0.85], [-0.85, 0, 0.85], [0.85, 0, -0.85], [-0.85, 0, -0.85]];
+  const rotors = [];
+  for (const [x, y, z] of rotorPositions) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.95, 6), armMat);
+    arm.position.set(x * 0.55, 0.05, z * 0.55);
+    arm.rotation.x = Math.PI / 2;
+    arm.rotation.z = Math.atan2(x, z);
+    group.add(arm);
+
+    const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.05, 10), armMat);
+    rotor.position.set(x, 0.1, z);
+    group.add(rotor);
+    rotors.push(rotor);
+  }
+  group.userData.rotors = rotors;
+
+  const lightMat = new THREE.MeshBasicMaterial({ color: 0xff3322 });
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), lightMat);
+  light.position.set(0, -0.2, 0);
+  group.add(light);
+  group.userData.blinkLight = light;
+
+  group.userData.radius = 1.2;
+  group.userData.type = 'sentry';
   return group;
 }
 
@@ -404,4 +504,45 @@ export function createOrbitRing(radius) {
   const ring = new THREE.Mesh(geo, mat);
   ring.rotation.x = Math.PI / 2;
   return ring;
+}
+
+// The client's spire — a tall, tapering, unmistakably fortified tower
+// marking where the crystals get handed over. Deliberately looms rather
+// than looking welcoming: wide dark base, narrowing black-metal shaft, and
+// a pulsing red core near the top (the weapon's power intake).
+export function createSpire() {
+  const group = new THREE.Group();
+
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x1a1416, metalness: 0.5, roughness: 0.6 });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 5.2, 3, 8), baseMat);
+  base.position.y = 1.5;
+  group.add(base);
+
+  const shaftMat = new THREE.MeshStandardMaterial({ color: 0x111014, metalness: 0.7, roughness: 0.35 });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 3.6, 16, 8), shaftMat);
+  shaft.position.y = 3 + 8;
+  group.add(shaft);
+
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x3a2020, metalness: 0.6, roughness: 0.3, emissive: 0x5a1810, emissiveIntensity: 0.6,
+  });
+  for (const t of [0.3, 0.55, 0.8]) {
+    const y = 3 + t * 16;
+    const r = THREE.MathUtils.lerp(3.6, 0.9, t) + 0.25;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.15, 8, 24), ringMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = y;
+    group.add(ring);
+  }
+
+  const coreMat = new THREE.MeshStandardMaterial({
+    color: 0xff4422, emissive: 0xff2200, emissiveIntensity: 1.6, metalness: 0.2, roughness: 0.2,
+  });
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 1), coreMat);
+  core.position.y = 3 + 16 + 1.6;
+  group.add(core);
+  group.userData.core = core;
+
+  group.userData.radius = 5.2;
+  return group;
 }

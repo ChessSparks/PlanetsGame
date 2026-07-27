@@ -73,6 +73,43 @@ export function hideOverlay() {
   overlay.classList.add('hidden');
 }
 
+let choiceOverlayEl = null;
+
+// A reusable N-button prompt (message-overlay only ever has one button) —
+// built for the level 4 "hand over the crystals / refuse" branch point, but
+// generic enough for any future binary/multi-choice story beat.
+export function showChoiceOverlay(title, body, options) {
+  if (!choiceOverlayEl) {
+    choiceOverlayEl = document.createElement('div');
+    choiceOverlayEl.id = 'choice-overlay';
+    choiceOverlayEl.className = 'hidden';
+    choiceOverlayEl.innerHTML = `
+      <div id="choice-box">
+        <h1 id="choice-title"></h1>
+        <p id="choice-body"></p>
+        <div id="choice-buttons"></div>
+      </div>
+    `;
+    document.body.appendChild(choiceOverlayEl);
+  }
+  choiceOverlayEl.querySelector('#choice-title').textContent = title;
+  choiceOverlayEl.querySelector('#choice-body').textContent = body;
+  const buttonsEl = choiceOverlayEl.querySelector('#choice-buttons');
+  buttonsEl.innerHTML = '';
+  for (const opt of options) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = opt.danger ? 'choice-btn danger' : 'choice-btn';
+    btn.textContent = opt.label;
+    btn.addEventListener('click', () => {
+      choiceOverlayEl.classList.add('hidden');
+      opt.onSelect();
+    });
+    buttonsEl.appendChild(btn);
+  }
+  choiceOverlayEl.classList.remove('hidden');
+}
+
 export function setKeysDisplay(current, total) {
   let el = document.getElementById('keys-counter');
   if (!el) {

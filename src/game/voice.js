@@ -109,5 +109,5 @@ export function speak(text, onEnd) {
 // even if no preferred male voice is found and it falls back to sharing her
 // voice, the two still don't sound identical.
 export function speakPlayer(text, onEnd) {
-  speakWith(text, playerVoice, 0.72, 0.95, onEnd);
+  speakWith(text, playerVoice, 0.55, 1.35, onEnd);
 }
