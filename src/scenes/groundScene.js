@@ -9,7 +9,7 @@ import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
 import {
   hideHud, showOverlay, flashToast, setKeysDisplay, announceObjective, flashScreenWhite,
 } from '../game/hud.js';
-import { speak, speakPlayer } from '../game/voice.js';
+import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
 import { showSlidingPuzzle, hideSlidingPuzzle } from '../game/puzzle.js';
 import {
@@ -655,9 +655,9 @@ export async function createGroundScene({ onLaunch } = {}) {
           setTimeout(() => {
             const line = 'Corthana, it\'s too quiet out here. What is happening?';
             flashToast(`"...${line}"`, 3600);
-            speakPlayer(line, () => {
+            setTimeout(() => {
               announce('I\'m not reading any life signs on this planet — nothing, except the plant life. Whatever happened here, it was a long time before we arrived.');
-            });
+            }, 3000);
           }, 1400);
         }
       }

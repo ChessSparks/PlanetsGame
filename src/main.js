@@ -7,6 +7,7 @@ import { createGroundScene } from './scenes/groundScene.js';
 import { createAscentScene } from './scenes/ascentScene.js';
 import { createMoonScene } from './scenes/moonScene.js';
 import { createClientWorldScene } from './scenes/clientWorldScene.js';
+import { createTravelCutscene } from './scenes/travelCutscene.js';
 
 // All GLTFLoader instances in the game (character.js, models.js) use the
 // default manager, so this tracks every model fetch across the whole app.
@@ -43,6 +44,29 @@ function teardownActiveScene() {
   activeScene = null;
 }
 
+// Shared driver for the space-travel cutscene between levels — plays it,
+// then hands off to whichever phase-starter should follow. Errors during
+// the *next* phase's load are surfaced the same way every other transition
+// in this file already does (a Retry overlay), so a flaky asset fetch after
+// a cutscene doesn't just leave the player staring at a dead screen.
+async function startTravelPhase(config, next) {
+  teardownActiveScene();
+  const travel = await createTravelCutscene({
+    ...config,
+    onComplete: () => next().catch((err) => {
+      console.error('Failed to continue after travel cutscene:', err);
+      showOverlay(
+        'Something went wrong',
+        `The next scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+        'Retry',
+        () => next().catch((e) => console.error(e)),
+      );
+    }),
+  });
+  activeScene = travel;
+  hideLoadingScreen();
+}
+
 async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
   const startFuel = Math.min(100, 60 + Math.round((fuelCellsCollected / totalFuelCells) * 40));
   hideKeysDisplay();
@@ -55,7 +79,15 @@ async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
   const ascent = await createAscentScene({
     startFuel,
     onRestart: () => startGroundPhase(),
-    onOrbitReached: () => startMoonPhase().catch((err) => {
+    onOrbitReached: () => startTravelPhase({
+      fromLabel: 'Home Orbit',
+      toLabel: 'the Moon',
+      fromColor: '#4dd0ff',
+      fromAccent: '#1c4a66',
+      toColor: '#9aa3ad',
+      toAccent: '#5c6068',
+      shotStyle: 'orbit',
+    }, startMoonPhase).catch((err) => {
       console.error('Failed to start moon phase:', err);
       showOverlay(
         'Something went wrong',
@@ -79,7 +111,15 @@ async function startMoonPhase() {
   camera.position.set(0, 12, 6.5);
   teardownActiveScene();
   const moon = await createMoonScene({
-    onComplete: () => startClientWorldPhase().catch((err) => {
+    onComplete: () => startTravelPhase({
+      fromLabel: 'the Moon',
+      toLabel: "the Client's Homeworld",
+      fromColor: '#9aa3ad',
+      fromAccent: '#5c6068',
+      toColor: '#8a6a4a',
+      toAccent: '#4a3626',
+      shotStyle: 'flyby',
+    }, startClientWorldPhase).catch((err) => {
       console.error('Failed to start client-world phase:', err);
       showOverlay(
         'Something went wrong',
@@ -96,9 +136,27 @@ async function startMoonPhase() {
 async function startClientWorldPhase() {
   camera.position.set(0, 30, 8);
   teardownActiveScene();
+  const returnTravelConfig = {
+    fromLabel: "the Client's Homeworld",
+    toLabel: 'a New Assignment',
+    fromColor: '#8a6a4a',
+    fromAccent: '#4a3626',
+    toColor: '#7bc8ff',
+    toAccent: '#3a6a99',
+    shotStyle: 'pullback',
+  };
+  const handleReturnTrip = () => startTravelPhase(returnTravelConfig, startGroundPhase).catch((err) => {
+    console.error('Failed to start ground phase:', err);
+    showOverlay(
+      'Something went wrong',
+      `The next scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+      'Retry',
+      () => startGroundPhase().catch((e) => console.error(e)),
+    );
+  });
   const clientWorld = await createClientWorldScene({
-    onDeliver: () => startGroundPhase(),
-    onRefuseEscape: () => startGroundPhase(),
+    onDeliver: handleReturnTrip,
+    onRefuseEscape: handleReturnTrip,
   });
   activeScene = clientWorld;
   hideLoadingScreen();

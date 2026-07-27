@@ -410,9 +410,13 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
       walker.forward.copy(prevForward);
     }
 
-    // Sentries are inert until sentriesActive — no accidental touch-death
-    // is possible before you've actually made your choice at the spire.
-    if (sentriesActive) {
+    // Sentries are inert until sentriesActive (no accidental touch-death
+    // before you've made your choice at the spire) and once sentriesDisabled
+    // (control tower override solved) they're harmless too — without that
+    // second check, standing next to a sentry that's still physically
+    // nearby right after solving the override would still kill you even
+    // though it's back in dumb patrol mode.
+    if (sentriesActive && !sentriesDisabled) {
       const newPos = walker.getPosition(PLANET_RADIUS);
       for (const sentry of sentries) {
         if (newPos.distanceTo(sentry.mesh.position) < PLAYER_COLLISION_RADIUS + SENTRY_HAZARD_RADIUS) {

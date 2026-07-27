@@ -4,8 +4,10 @@ import {
   createBird, createDrone, createSatellite, createOrbitRing,
 } from '../entities.js';
 import { loadDecoration } from '../game/models.js';
-import { keys } from '../game/input.js';
-import { setBarLabels, setTopBar, setBottomBar, setCellsCount, showOverlay } from '../game/hud.js';
+import { keys, consumeInteractPress } from '../game/input.js';
+import {
+  setBarLabels, setTopBar, setBottomBar, setCellsCount, showOverlay, flashToast,
+} from '../game/hud.js';
 
 const ORBIT_ALTITUDE = 140;
 const EARTH_RADIUS = 300;
@@ -24,6 +26,14 @@ const STRAFE_ACCEL = 46;
 const STRAFE_DAMPING = 6;
 const MAX_STRAFE_SPEED = 14;
 const MAX_FALL_SPEED = -22;
+
+// A short scripted liftoff plays before the player gets control — the ship
+// eases up from the pad to LIFTOFF_HANDOFF_Y on its own, then hands off
+// exactly LIFTOFF_HANDOFF_VY of upward velocity so normal gravity/thrust
+// physics picks up smoothly instead of the ship suddenly "starting" mid-air.
+const LIFTOFF_DURATION = 3.2;
+const LIFTOFF_HANDOFF_Y = 6;
+const LIFTOFF_HANDOFF_VY = 9;
 
 const FUEL_MAX = 100;
 const THRUST_FUEL_DRAIN = 14;
@@ -58,6 +68,10 @@ function createThrustFlame() {
   flame.position.y = -0.35;
   flame.rotation.x = Math.PI;
   return flame;
+}
+
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
 }
 
 export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrbitReached } = {}) {
@@ -120,7 +134,9 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
   }
   buildLevel();
 
-  let state = 'playing';
+  let state = 'liftoff';
+  let liftoffElapsed = 0;
+  flashToast('Liftoff! (Press E to skip)', LIFTOFF_DURATION * 1000);
 
   function resetGame(newStartFuel) {
     player.x = 0; player.y = GROUND_Y; player.vx = 0; player.vy = 0;
@@ -225,6 +241,47 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
     }
   }
 
+  // Shot A (0-35%): a close, low ignition shot near the engine as the ship
+  // first lifts off the pad. Shot B (35-100%): pulls back and blends into
+  // exactly the standard chase-cam framing updateCamera() uses, timed to
+  // land there right as control hands off — no camera pop at the switch.
+  function updateLiftoff(dt, elapsed, camera) {
+    if (consumeInteractPress()) {
+      liftoffElapsed = LIFTOFF_DURATION;
+    } else {
+      liftoffElapsed += dt;
+    }
+    const t = Math.min(1, liftoffElapsed / LIFTOFF_DURATION);
+    const et = easeInOutCubic(t);
+
+    player.y = LIFTOFF_HANDOFF_Y * et;
+    rocket.position.set(player.x, player.y, 0);
+    rocket.userData.flame.visible = true;
+    rocket.userData.flame.scale.setScalar(0.9 + Math.sin(elapsed * 30) * 0.15);
+    rocket.rotation.z = Math.sin(elapsed * 6) * 0.02 * (1 - t);
+
+    if (t < 0.35) {
+      const st = t / 0.35;
+      camera.position.set(
+        THREE.MathUtils.lerp(1.8, 1.2, st),
+        THREE.MathUtils.lerp(-0.6, 0.4, st),
+        THREE.MathUtils.lerp(3.2, 4.5, st),
+      );
+      camera.lookAt(0, player.y + 0.6, 0);
+    } else {
+      const st = easeInOutCubic((t - 0.35) / 0.65);
+      const targetPos = new THREE.Vector3(player.x * 0.4, player.y - 3, 15);
+      const fromPos = new THREE.Vector3(1.2, 0.4, 4.5);
+      camera.position.lerpVectors(fromPos, targetPos, st);
+      camera.lookAt(player.x * 0.4, player.y + 6, 0);
+    }
+
+    if (t >= 1) {
+      state = 'playing';
+      player.vy = LIFTOFF_HANDOFF_VY;
+    }
+  }
+
   function updateCamera(dt, camera) {
     const targetPos = new THREE.Vector3(player.x * 0.4, player.y - 3, 15);
     camera.position.lerp(targetPos, 1 - Math.pow(0.001, dt));
@@ -262,6 +319,10 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
   return {
     scene,
     update(dt, elapsed, camera) {
+      if (state === 'liftoff') {
+        updateLiftoff(dt, elapsed, camera);
+        return;
+      }
       if (state === 'playing') {
         updatePlayer(dt);
         updateEntities(dt, elapsed);
