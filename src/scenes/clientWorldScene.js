@@ -14,7 +14,7 @@ import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
 import { playDroneAlert, playPickupChime } from '../game/audio.js';
 import { showCircuitPuzzle } from '../game/circuitPuzzle.js';
-import { showSlidingPuzzle } from '../game/puzzle.js';
+import { showCipherPuzzle } from '../game/cipherPuzzle.js';
 
 // The biggest level in the game — the client's homeworld. A long, dangerous
 // walk from the landing site to the spire, through an industrial district,
@@ -107,6 +107,7 @@ const SENTRY_HAZARD_RADIUS = 1.4;
 const SENTRY_AGGRO_RADIUS = 10;
 const SENTRY_DISENGAGE_RADIUS = 15;
 const SENTRY_CHASE_ALTITUDE = 1.0;
+const SENTRY_BODY_RADIUS = 0.9;
 const SENTRY_CHASE_SPEED = 5.4; // slower than RUN_SPEED — outrunning them is always possible
 const SENTRY_MAX_CHASE_SECONDS = 9;
 const SENTRY_PATROL_CATCH_SPEED = 9;
@@ -129,12 +130,40 @@ function inClearZone(normal) {
   return false;
 }
 
-function hitsObstacle(normal, obstacles) {
+function hitsObstacle(normal, obstacles, bodyRadius = PLAYER_COLLISION_RADIUS) {
   for (const obs of obstacles) {
     const arc = PLANET_RADIUS * normal.angleTo(obs.normal);
-    if (arc < PLAYER_COLLISION_RADIUS + obs.radius) return true;
+    if (arc < bodyRadius + obs.radius) return true;
   }
   return false;
+}
+
+// Sentries fly at a fixed low altitude (see SENTRY_CHASE_ALTITUDE) — well
+// under building roof height — and previously moved straight at their
+// target with no regard for the same `obstacles` list the player collides
+// with, so a chasing drone would clip straight through building walls. This
+// mirrors the player's bump collision but adds a sideways slide: on a
+// blocked step, try sliding along the obstacle's tangent (both directions)
+// before giving up and holding position, so drones route around buildings
+// instead of just freezing at the wall.
+function stepAvoidingObstacles(pos, target, maxStep, obstacles, bodyRadius) {
+  const prev = pos.clone();
+  moveToward(pos, target, maxStep);
+  if (!hitsObstacle(pos.clone().normalize(), obstacles, bodyRadius)) return;
+
+  pos.copy(prev);
+  const toTarget = new THREE.Vector3().subVectors(target, prev);
+  if (toTarget.lengthSq() < 1e-6) return;
+  const outward = prev.clone().normalize();
+  const perp = new THREE.Vector3().crossVectors(toTarget, outward).normalize();
+  for (const dir of [perp, perp.clone().negate()]) {
+    const candidate = prev.clone().addScaledVector(dir, maxStep);
+    if (!hitsObstacle(candidate.clone().normalize(), obstacles, bodyRadius)) {
+      pos.copy(candidate);
+      return;
+    }
+  }
+  // Boxed in on both sides — hold position rather than clip through.
 }
 
 function orbitPosition(sentry, elapsed, target = new THREE.Vector3()) {
@@ -581,7 +610,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
       return;
     }
     state = 'puzzle';
-    showSlidingPuzzle(
+    showCipherPuzzle(
       () => {
         sentriesDisabled = true;
         for (const sentry of sentries) {
@@ -596,8 +625,6 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
       () => {
         state = 'playing';
       },
-      'Security Override',
-      'Slide the tiles back into order (1-15) to override the sentry control grid.',
     );
   }
 
@@ -639,10 +666,10 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
       if (sentry.mode === 'chase') {
         sentry.chaseTime += dt;
         sentryChaseTarget.copy(playerNormal).multiplyScalar(PLANET_RADIUS + SENTRY_CHASE_ALTITUDE);
-        moveToward(sentry.mesh.position, sentryChaseTarget, SENTRY_CHASE_SPEED * dt);
+        stepAvoidingObstacles(sentry.mesh.position, sentryChaseTarget, SENTRY_CHASE_SPEED * dt, obstacles, SENTRY_BODY_RADIUS);
       } else {
         orbitPosition(sentry, elapsed, sentryOrbitTarget);
-        moveToward(sentry.mesh.position, sentryOrbitTarget, SENTRY_PATROL_CATCH_SPEED * dt);
+        stepAvoidingObstacles(sentry.mesh.position, sentryOrbitTarget, SENTRY_PATROL_CATCH_SPEED * dt, obstacles, SENTRY_BODY_RADIUS);
       }
 
       const chasing = sentry.mode === 'chase';

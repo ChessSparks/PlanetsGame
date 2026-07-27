@@ -67,7 +67,7 @@ function ensureDom() {
   overlayEl.className = 'hidden';
   overlayEl.innerHTML = `
     <div id="circuit-box">
-      <h1>Security Override</h1>
+      <h1>Beacon Uplink</h1>
       <p>Rotate each conduit to patch a line from the source to the target.</p>
       <div id="circuit-grid"></div>
       <button id="circuit-close" type="button">Leave</button>

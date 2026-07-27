@@ -531,3 +531,157 @@ html, body {
 #circuit-close:hover {
   filter: brightness(1.2);
 }
+
+#cipher-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 2, 2, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#cipher-overlay.hidden {
+  display: none;
+}
+
+#cipher-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(20, 8, 8, 0.95);
+  border: 1px solid rgba(255, 110, 90, 0.4);
+  box-shadow: 0 0 40px rgba(255, 80, 60, 0.2);
+  max-width: 360px;
+}
+
+#cipher-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#cipher-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 18px;
+  max-width: 300px;
+}
+
+#cipher-slots {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.cipher-slot {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a0e08;
+}
+
+.cipher-slot:hover {
+  filter: brightness(1.1);
+}
+
+#cipher-submit {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 22px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: linear-gradient(90deg, #ff8a5c, #ff5e3a);
+  color: #1a0e08;
+  letter-spacing: 0.4px;
+  margin-bottom: 16px;
+}
+
+#cipher-submit:hover {
+  filter: brightness(1.1);
+}
+
+#cipher-history {
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.cipher-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cipher-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.cipher-chip {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #1a0e08;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cipher-pegs {
+  display: grid;
+  grid-template-columns: repeat(2, 8px);
+  grid-gap: 3px;
+}
+
+.cipher-peg {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.cipher-peg-exact {
+  background: #ff5e3a;
+  border-color: #ff5e3a;
+}
+
+.cipher-peg-partial {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+#cipher-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#cipher-close:hover {
+  filter: brightness(1.2);
+}
