@@ -55,9 +55,9 @@ const SPAWN_SPOT = { normal: sph(50, 15), clear: 0.14 };
 // ~67 units of arc from the ship — a real journey, the whole point of this
 // being the largest level.
 const SPIRE_SPOT = { normal: sph(-30, 100), clear: 0.4 };
-// ~10-18 units from spawn/ship — an early, safe-to-reach waypoint since it
-// gates knowing where the spire even is.
-const MAP_CONSOLE_SPOT = { normal: sph(35, 30), clear: 0.2 };
+// ~31-39 units from spawn/ship — a genuine trek before the spire's even on
+// the map, rather than something sitting right next to the landing site.
+const MAP_CONSOLE_SPOT = { normal: sph(0, 45), clear: 0.2 };
 // Roughly between the spire and the ship — a logical waypoint on the way
 // back once the sentries have been turned loose.
 const CONTROL_TOWER_SPOT = { normal: sph(-5, 65), clear: 0.25 };
@@ -70,16 +70,22 @@ const SENTRY_PATROLS = [
   { center: sph(20, 90), orbitRadius: 4.5, altitude: 2.7, speed: 0.5, phase: 2.2 },
 ];
 
-// Industrial districts — clusters of solid buildings on paved lots, scattered
-// across the route rather than one literal grid (much simpler to place
-// correctly on a sphere than true perpendicular streets, while still reading
-// as "urban/industrial" rather than empty wasteland).
+// Industrial districts — each one a real grid of building slots (not pure
+// random jitter), so there's a guaranteed gap between every building instead
+// of buildings occasionally clustering into an impassable wall. Buildings
+// are small, square, and un-rotated (see scatterDistricts) specifically to
+// minimize a flat-box-on-a-curved-sphere artifact: a wide building placed
+// far from its district center (large angle relative to the 32-unit planet
+// radius) has its outer corners visibly lift off the curved terrain. Max
+// footprint radius is ~2.3 units; DISTRICT_SPACING of 8 between slot centers
+// guarantees at least ~3.4 units of clear street even worst-case.
 const DISTRICT_CENTERS = [
   sph(45, 15), sph(20, 45), sph(-15, 55), sph(-25, 80), sph(15, 75), sph(-45, 15),
   sph(35, 60), sph(-35, 90), sph(5, 20),
 ];
-const DISTRICT_RADIUS = 13;
-const BUILDINGS_PER_DISTRICT = 14;
+const DISTRICT_GRID = 4; // 4x4 slots per district
+const DISTRICT_SPACING = 8; // world units between slot centers
+const DISTRICT_SKIP_CHANCE = 0.15; // leaves occasional empty lots for variety
 
 const CLEAR_ZONES = [
   SHIP_SPOT, SPAWN_SPOT, SPIRE_SPOT, MAP_CONSOLE_SPOT, CONTROL_TOWER_SPOT,
@@ -95,7 +101,7 @@ const MAP_CONSOLE_BLOCK_RADIUS = 1.1;
 const MAP_CONSOLE_INTERACT_RADIUS = 2.8;
 const CONTROL_TOWER_BLOCK_RADIUS = 2.4;
 const CONTROL_TOWER_INTERACT_RADIUS = 4.5;
-const EMBED = { ship: 0.5, rock: 0.15, spire: 0.4, console: 0.3, tower: 0.3, building: 0.1 };
+const EMBED = { ship: 0.5, rock: 0.15, spire: 0.4, console: 0.3, tower: 0.3, building: 0.4 };
 
 const SENTRY_HAZARD_RADIUS = 1.4;
 const SENTRY_AGGRO_RADIUS = 10;
@@ -216,13 +222,25 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   scene.add(sun.target);
   const shadowLightOffset = SUN_DIRECTION.clone().multiplyScalar(30);
 
-  // Denser and slightly bigger than the default — the lighter fog/sky here
-  // (brightened per an earlier request) washes out small dim points more
-  // than the other scenes' darker backgrounds do.
-  const stars = createStarfield(3500, 700, false);
+  // fullSphere=true is required here, not just cosmetic: the player walks
+  // on every side of this planet, so "the sky" is whichever direction is
+  // away from their feet at any given moment — fullSphere=false clusters
+  // every star in the world's fixed +Y hemisphere (meant for a flat scene
+  // with one constant "up"), which left stars missing from view most of the
+  // time depending on where you were standing. Also denser/bigger than the
+  // default — the lighter fog/sky here (brightened per an earlier request)
+  // washes out small dim points more than the other scenes' darker skies do.
+  const stars = createStarfield(12000, 700, true);
   stars.material.size = 1.9;
   stars.material.sizeAttenuation = true;
   scene.add(stars);
+
+  // A second, closer, sparser layer of bigger points reads as a handful of
+  // bright "near" stars standing out from the dense field above it.
+  const nearStars = createStarfield(500, 380, true);
+  nearStars.material.size = 3.2;
+  nearStars.material.sizeAttenuation = true;
+  scene.add(nearStars);
 
   const sunMesh = createSun(0xffc59c, 10);
   sunMesh.position.copy(SUN_DIRECTION).multiplyScalar(200);
@@ -283,6 +301,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   let delivered = false;
   let sentriesActive = false;
   let sentriesDisabled = false;
+  let respawnGraceTimer = 0; // blocks new patrol->chase aggro for a moment after a respawn
   let lastElapsed = 0; // captured each frame so resetRun() can relocate sentries outside the normal update tick
 
   function announce(text) {
@@ -311,6 +330,13 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
       // and kills you again immediately, over and over.
       orbitPosition(sentry, lastElapsed, sentry.mesh.position);
     }
+    // Once sentriesActive is true it stays true across a respawn (by
+    // design — the alarm doesn't un-ring itself), which means a sentry
+    // patrolling near spawn could re-detect and start chasing again within
+    // a second of landing back there. That reads as "never reset" even
+    // though the reposition above worked — this grace window is what
+    // actually gives the player a moment to get their bearings.
+    respawnGraceTimer = 2.5;
     state = 'playing';
     announce('You were caught. Regrouping at the landing site.');
   }
@@ -452,7 +478,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     showOverlay(screen.title, screen.body, 'Continue', () => {
       activateSentries();
       state = 'playing';
-      announce('The control tower can shut the sentries down — or just run for the ship. Your call.');
+      announce('Objective: shut down the sentries at the control tower, then get to the ship.');
     });
   }
 
@@ -500,6 +526,10 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   function handleShipInteract() {
     if (!choiceMade) {
       flashToast('The ship isn\'t going anywhere until you\'ve dealt with the spire.', 2400);
+      return;
+    }
+    if (sentriesActive && !sentriesDisabled) {
+      flashToast('Too hot to lift off with the sentries still active — hit the control tower first.', 2600);
       return;
     }
     resolveEnding();
@@ -591,7 +621,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     for (const sentry of sentries) {
       if (sentriesActive && !sentriesDisabled) {
         const distToPlayer = sentry.mesh.position.distanceTo(playerPos);
-        if (sentry.mode === 'patrol' && distToPlayer < SENTRY_AGGRO_RADIUS) {
+        if (sentry.mode === 'patrol' && respawnGraceTimer <= 0 && distToPlayer < SENTRY_AGGRO_RADIUS) {
           sentry.mode = 'chase';
           sentry.chaseTime = 0;
         } else if (sentry.mode === 'chase'
@@ -665,6 +695,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     scene,
     update(dt, elapsed, camera) {
       lastElapsed = elapsed;
+      if (respawnGraceTimer > 0) respawnGraceTimer -= dt;
       if (state === 'playing') {
         updateMovement(dt);
         updateInteract();
@@ -711,32 +742,38 @@ async function scatterRuins(scene, obstacles) {
 }
 
 function scatterDistricts(scene, obstacles) {
+  const half = (DISTRICT_GRID - 1) / 2;
   for (const center of DISTRICT_CENTERS) {
     const { u, v } = tangentBasis(center);
-    for (let i = 0; i < BUILDINGS_PER_DISTRICT; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const dist = Math.random() * DISTRICT_RADIUS;
-      const point = center.clone()
-        .addScaledVector(u, (Math.cos(angle) * dist) / PLANET_RADIUS)
-        .addScaledVector(v, (Math.sin(angle) * dist) / PLANET_RADIUS)
-        .normalize();
-      if (inClearZone(point)) continue;
+    for (let row = 0; row < DISTRICT_GRID; row++) {
+      for (let col = 0; col < DISTRICT_GRID; col++) {
+        if (Math.random() < DISTRICT_SKIP_CHANCE) continue; // empty lot, keeps it from feeling too uniform
 
-      const width = 3 + Math.random() * 4;
-      const depth = 3 + Math.random() * 4;
-      const height = 3 + Math.random() * 5;
+        // Small jitter around the grid slot — kept well under half the
+        // spacing so two adjacent buildings can never actually touch.
+        const offsetU = (col - half) * DISTRICT_SPACING + (Math.random() - 0.5) * 1.6;
+        const offsetV = (row - half) * DISTRICT_SPACING + (Math.random() - 0.5) * 1.6;
+        const point = center.clone()
+          .addScaledVector(u, offsetU / PLANET_RADIUS)
+          .addScaledVector(v, offsetV / PLANET_RADIUS)
+          .normalize();
+        if (inClearZone(point)) continue;
 
-      const building = createIndustrialBuilding(width, depth, height);
-      placeOnSurface(building, point, EMBED.building);
-      orientToNormal(building, point, Math.random() * Math.PI * 2);
-      scene.add(building);
-      obstacles.push({ normal: point.clone(), radius: building.userData.radius });
+        const size = 2.6 + Math.random() * 1.6;
+        const height = 3 + Math.random() * 5;
 
-      const pad = createStreetPad(width * 1.7, depth * 1.7);
-      orientToNormal(pad, point, 0);
-      pad.rotateX(-Math.PI / 2);
-      placeOnSurface(pad, point, -0.03);
-      scene.add(pad);
+        const building = createIndustrialBuilding(size, size, height);
+        placeOnSurface(building, point, EMBED.building);
+        orientToNormal(building, point, 0);
+        scene.add(building);
+        obstacles.push({ normal: point.clone(), radius: building.userData.radius });
+
+        const pad = createStreetPad(size * 1.6, size * 1.6);
+        orientToNormal(pad, point, 0);
+        pad.rotateX(-Math.PI / 2);
+        placeOnSurface(pad, point, -0.03);
+        scene.add(pad);
+      }
     }
   }
 }

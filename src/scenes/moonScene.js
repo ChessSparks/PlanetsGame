@@ -185,7 +185,11 @@ export async function createMoonScene({ onComplete } = {}) {
   scene.add(sun.target);
   const shadowLightOffset = new THREE.Vector3(60, 90, 40).normalize().multiplyScalar(30);
 
-  scene.add(createStarfield(2400, 900, false));
+  // fullSphere=true: the player walks on every side of this moon, so
+  // fullSphere=false (which clusters stars in the world's fixed +Y
+  // hemisphere, meant for a flat scene with one constant "up") would leave
+  // stars missing from view depending on where you're standing.
+  scene.add(createStarfield(2400, 900, true));
 
   // Home planet — the same distant point glimpsed from the crash site,
   // now huge and close: the payoff for the whole ground-then-orbit arc.
