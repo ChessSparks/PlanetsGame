@@ -233,8 +233,7 @@ const CUTSCENE_DURATION = 6.5;
 const CUTSCENE_DROP_ALTITUDE = 60;
 const CUTSCENE_DROP_LATERAL = 22;
 const SMOKE_FALL_INTERVAL = 0.05; // seconds between puffs while the ship is falling
-const SMOKE_TAIL_INTERVAL = 0.35; // seconds between puffs from the wreck afterward
-const SMOKE_TAIL_DURATION = 4; // how long the wreck keeps smoking post-impact
+const SMOKE_TAIL_INTERVAL = 0.16; // seconds between puffs from the wreck, while still broken
 
 // onLaunch(fuelCellsCollected, totalFuelCells) is invoked once the player
 // has repaired the ship, secured fuel via the volcano puzzle, and interacts
@@ -879,19 +878,21 @@ export async function createGroundScene({ onLaunch } = {}) {
       .addScaledVector(shipBasis.u, (Math.random() - 0.5) * 0.6)
       .addScaledVector(shipBasis.v, (Math.random() - 0.5) * 0.6);
     smokeParticles.push({
-      mesh: puff, age: 0, lifetime: 1.2 + Math.random() * 0.6, velocity, baseOpacity: 0.5,
+      mesh: puff, age: 0, lifetime: 1.6 + Math.random() * 0.7, velocity, baseOpacity: 0.7,
     });
   }
 
   // Heavy smoke while the ship is actually falling, tapering to an
-  // occasional wisp from the wreck for a few seconds after impact, then
-  // stopping — existing puffs still finish fading out on their own.
+  // occasional wisp from the wreck that keeps going for as long as the ship
+  // is actually broken — it's a visible "still needs repairing" signal, not
+  // a timed effect, so it only stops once handleShipInteract() sets
+  // shipRepaired. Existing puffs still finish fading out on their own.
   function updateSmoke(dt) {
     if (ship) {
       smokeElapsed += dt;
       const inFall = smokeElapsed < CUTSCENE_DURATION;
-      const inTail = smokeElapsed < CUTSCENE_DURATION + SMOKE_TAIL_DURATION;
-      if (inFall || inTail) {
+      const stillBroken = !shipRepaired;
+      if (inFall || stillBroken) {
         smokeSpawnTimer -= dt;
         if (smokeSpawnTimer <= 0) {
           smokeSpawnTimer = inFall ? SMOKE_FALL_INTERVAL : SMOKE_TAIL_INTERVAL;
@@ -1135,9 +1136,9 @@ async function placeWildlife(scene, wildlifeAnimals) {
 }
 
 function createSmokePuff() {
-  const geo = new THREE.SphereGeometry(0.5 + Math.random() * 0.35, 6, 6);
+  const geo = new THREE.SphereGeometry(0.7 + Math.random() * 0.45, 6, 6);
   const mat = new THREE.MeshBasicMaterial({
-    color: 0x2c2c2c, transparent: true, opacity: 0.5, depthWrite: false,
+    color: 0x232323, transparent: true, opacity: 0.7, depthWrite: false,
   });
   return new THREE.Mesh(geo, mat);
 }
