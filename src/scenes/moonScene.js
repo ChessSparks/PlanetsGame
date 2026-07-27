@@ -11,7 +11,9 @@ import {
 } from '../game/hud.js';
 import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
-import { playPickupChime } from '../game/audio.js';
+import {
+  playPickupChime, playMusicTheme, playAmbience, playLandingThud,
+} from '../game/audio.js';
 import { showStarChart } from '../game/starChartPuzzle.js';
 
 const MOON_RADIUS = 14;
@@ -65,6 +67,14 @@ const CLEAR_ZONES = [
   SHIP_SPOT, SPAWN_SPOT, MAP_CONSOLE_SPOT,
   ...CRYSTAL_SPOTS.map((c) => ({ normal: c.normal, clear: 0.09 })),
 ];
+
+// In-engine landing cutscene: the ship eases down from altitude onto its
+// resting spot on a decelerating Bezier arc (unlike the ground scene's
+// violent crash — this is a controlled landing, so no tumble, just a gentle
+// nose-down attitude that levels out by touchdown) before gameplay begins.
+const LANDING_DURATION = 5.5;
+const LANDING_DROP_ALTITUDE = 40;
+const LANDING_DROP_LATERAL = 16;
 
 const ROCK_COUNT = 90;
 const PLAYER_COLLISION_RADIUS = 0.45;
@@ -126,6 +136,23 @@ function getGroundBump(normal, obstacles) {
   return bump;
 }
 
+// Same convention as ascentScene/groundScene: a cone hanging below the
+// ship's feet-at-origin base, pointing down — correct here since the final
+// leg of the landing is a straight-down braking burn.
+function createLandingFlame() {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffb066, transparent: true, opacity: 0.9 });
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 12), mat);
+  flame.position.y = -0.5;
+  flame.rotation.x = Math.PI;
+  flame.visible = false;
+  return flame;
+}
+
+function createDustPuff() {
+  const mat = new THREE.MeshBasicMaterial({ color: 0xcac2b8, transparent: true, opacity: 0.55 });
+  return new THREE.Mesh(new THREE.SphereGeometry(0.35 + Math.random() * 0.25, 6, 6), mat);
+}
+
 function createCrystal() {
   const gem = createFuelCell();
   gem.userData.core.material.color.set(0x8fd6ff);
@@ -163,6 +190,8 @@ function createMapConsole() {
 
 export async function createMoonScene({ onComplete } = {}) {
   hideHud();
+  playMusicTheme('moon');
+  playAmbience('moon');
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
@@ -217,6 +246,24 @@ export async function createMoonScene({ onComplete } = {}) {
   const ship = await loadDecoration('/assets/spaceship.glb', 6.5);
   placeOnSurface(ship, SHIP_SPOT.normal, EMBED.ship);
   orientToNormal(ship, SHIP_SPOT.normal, 0);
+  const shipBasis = tangentBasis(SHIP_SPOT.normal);
+  const shipRestPos = ship.position.clone();
+  const shipRestQuat = ship.quaternion.clone();
+  // Sweeps in from altitude at an angle rather than dropping straight down —
+  // the arc control point sits wide and roughly mid-height for a shallow
+  // banking approach into the vertical final braking burn.
+  const shipStartPos = shipRestPos.clone()
+    .addScaledVector(SHIP_SPOT.normal, LANDING_DROP_ALTITUDE)
+    .addScaledVector(shipBasis.u, LANDING_DROP_LATERAL);
+  const shipArcControl = shipRestPos.clone()
+    .addScaledVector(SHIP_SPOT.normal, LANDING_DROP_ALTITUDE * 0.5)
+    .addScaledVector(shipBasis.u, LANDING_DROP_LATERAL * 1.6);
+  const shipStartQuat = shipRestQuat.clone()
+    .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(0.35, 0.5, 0.15)));
+  ship.position.copy(shipStartPos);
+  ship.quaternion.copy(shipStartQuat);
+  const landingFlame = createLandingFlame();
+  ship.add(landingFlame);
   scene.add(ship);
   obstacles.push({ normal: SHIP_SPOT.normal.clone(), radius: SHIP_BLOCK_RADIUS });
 
@@ -247,8 +294,15 @@ export async function createMoonScene({ onComplete } = {}) {
   scatterMoonRocks(scene, obstacles);
 
   const minimap = createMinimap();
+  minimap.setVisible(false); // stays hidden until the landing cutscene ends
 
-  let state = 'intro';
+  let state = 'landing';
+  let landingElapsed = 0;
+  let landingDone = false;
+  let dustSpawned = false;
+  const landingShipPos = new THREE.Vector3();
+  const dustParticles = []; // { mesh, age, lifetime, velocity } — runs independent of state so a late-expiring puff isn't cut off
+  flashToast('Press E to skip', LANDING_DURATION * 1000);
 
   function announce(text) {
     announceObjective(text);
@@ -256,15 +310,109 @@ export async function createMoonScene({ onComplete } = {}) {
   }
 
   hideHud();
-  showOverlay(
-    'Touchdown',
-    'Corthana: Landed. There\'s a console nearby giving off a strange resonance — might be able to pull a map of nearby crystal deposits out of it.\n\nThe ship\'s already flightworthy, for what it\'s worth. Whatever needs these crystals, it isn\'t her.\n\nLow gravity here, so jumps go a long way.\n\nW/↑: Walk   S/↓: Back   A/D: Turn   Shift: Run   Space: Jump   E: Interact',
-    'Begin',
-    () => {
-      state = 'playing';
-      announce('Objective: find the console and solve it to map the crystal deposits.');
-    },
-  );
+
+  function spawnLandingDust() {
+    for (let i = 0; i < 14; i++) {
+      const puff = createDustPuff();
+      puff.position.copy(shipRestPos);
+      scene.add(puff);
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 3 + Math.random() * 3;
+      const velocity = shipBasis.u.clone().multiplyScalar(Math.cos(angle))
+        .addScaledVector(shipBasis.v, Math.sin(angle))
+        .multiplyScalar(speed)
+        .addScaledVector(SHIP_SPOT.normal, 1.5 + Math.random());
+      dustParticles.push({ mesh: puff, age: 0, lifetime: 1.2 + Math.random() * 0.6, velocity });
+    }
+  }
+
+  function updateDust(dt) {
+    for (let i = dustParticles.length - 1; i >= 0; i--) {
+      const p = dustParticles[i];
+      p.age += dt;
+      if (p.age >= p.lifetime) {
+        scene.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        p.mesh.material.dispose();
+        dustParticles.splice(i, 1);
+        continue;
+      }
+      p.mesh.position.addScaledVector(p.velocity, dt);
+      p.velocity.multiplyScalar(0.94);
+      const tLife = p.age / p.lifetime;
+      p.mesh.material.opacity = 0.55 * (1 - tLife);
+      p.mesh.scale.setScalar(1 + tLife * 1.8);
+    }
+  }
+
+  function finishLanding() {
+    minimap.setVisible(true);
+    ship.position.copy(shipRestPos);
+    ship.quaternion.copy(shipRestQuat);
+    landingFlame.visible = false;
+    state = 'intro';
+    showOverlay(
+      'Touchdown',
+      'Corthana: Landed. There\'s a console nearby giving off a strange resonance — might be able to pull a map of nearby crystal deposits out of it.\n\nThe ship\'s already flightworthy, for what it\'s worth. Whatever needs these crystals, it isn\'t her.\n\nLow gravity here, so jumps go a long way.\n\nW/↑: Walk   S/↓: Back   A/D: Turn   Shift: Run   Space: Jump   E: Interact',
+      'Begin',
+      () => {
+        state = 'playing';
+        announce('Objective: find the console and solve it to map the crystal deposits.');
+      },
+    );
+  }
+
+  // Drives the whole landing sequence directly by setting camera.position/
+  // lookAt each frame — the normal player-follow updateCamera() is skipped
+  // entirely while state === 'landing' (see update() below).
+  function updateLanding(dt, camera) {
+    if (consumeInteractPress()) landingElapsed = LANDING_DURATION;
+    else landingElapsed += dt;
+    const t = Math.min(1, landingElapsed / LANDING_DURATION);
+    // Ease-out — fast at first, braking hard into a soft touchdown. The
+    // opposite curve from the ground scene's crash (which eases IN, i.e.
+    // accelerates), since this is a controlled landing, not a fall.
+    const te = 1 - (1 - t) * (1 - t);
+
+    const mt = 1 - te;
+    landingShipPos.set(0, 0, 0)
+      .addScaledVector(shipStartPos, mt * mt)
+      .addScaledVector(shipArcControl, 2 * mt * te)
+      .addScaledVector(shipRestPos, te * te);
+    ship.position.copy(landingShipPos);
+    ship.quaternion.copy(shipStartQuat).slerp(shipRestQuat, te);
+
+    landingFlame.visible = t > 0.15 && t < 0.98;
+    landingFlame.scale.setScalar(0.9 + Math.sin(landingElapsed * 14) * 0.1);
+
+    if (t < 0.4) {
+      // Shot A — wide establishing shot, ship descending against the stars.
+      camera.position.copy(SHIP_SPOT.normal)
+        .multiplyScalar(MOON_RADIUS + 26)
+        .addScaledVector(shipBasis.u, 20)
+        .addScaledVector(shipBasis.v, 6);
+      camera.up.copy(SHIP_SPOT.normal);
+      camera.lookAt(ship.position);
+    } else {
+      // Shot B — low trailing shot for the final approach and touchdown.
+      camera.position.copy(ship.position)
+        .addScaledVector(shipBasis.u, -6)
+        .addScaledVector(SHIP_SPOT.normal, 3);
+      camera.up.copy(SHIP_SPOT.normal);
+      camera.lookAt(ship.position);
+    }
+
+    if (t >= 0.96 && !dustSpawned) {
+      dustSpawned = true;
+      spawnLandingDust();
+      playLandingThud();
+    }
+
+    if (t >= 1 && !landingDone) {
+      landingDone = true;
+      finishLanding();
+    }
+  }
 
   function updateMovement(dt) {
     let turn = 0;
@@ -446,6 +594,13 @@ export async function createMoonScene({ onComplete } = {}) {
   return {
     scene,
     update(dt, elapsed, camera) {
+      if (state === 'landing') {
+        updateLanding(dt, camera);
+        updateDust(dt);
+        updateShadowLight();
+        home.rotation.y += dt * 0.02;
+        return;
+      }
       if (state === 'playing') {
         updateMovement(dt);
         updateCrystalPickups(dt);
@@ -454,6 +609,7 @@ export async function createMoonScene({ onComplete } = {}) {
       astronaut.update(dt);
       updateCamera(dt, camera);
       updateShadowLight();
+      updateDust(dt);
       home.rotation.y += dt * 0.02;
       if (!mapSolved) {
         mapConsole.userData.ring.rotation.z += dt * 0.6;

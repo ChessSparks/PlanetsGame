@@ -8,6 +8,9 @@ import { keys, consumeInteractPress } from '../game/input.js';
 import {
   setBarLabels, setTopBar, setBottomBar, setCellsCount, showOverlay, flashToast,
 } from '../game/hud.js';
+import {
+  playMusicTheme, playAmbience, playIgnitionSting, playOrbitSting,
+} from '../game/audio.js';
 
 const ORBIT_ALTITUDE = 140;
 const EARTH_RADIUS = 300;
@@ -75,6 +78,9 @@ function easeInOutCubic(t) {
 }
 
 export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrbitReached } = {}) {
+  playMusicTheme('ascent');
+  playAmbience('ascent');
+
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x02050f);
   scene.fog = new THREE.Fog(0x02050f, 60, 260);
@@ -137,6 +143,7 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
   let state = 'liftoff';
   let liftoffElapsed = 0;
   flashToast('Liftoff! (Press E to skip)', LIFTOFF_DURATION * 1000);
+  playIgnitionSting();
 
   function resetGame(newStartFuel) {
     player.x = 0; player.y = GROUND_Y; player.vx = 0; player.vy = 0;
@@ -299,6 +306,7 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
     if (state !== 'playing') return;
     if (player.y >= ORBIT_ALTITUDE) {
       state = 'won';
+      playOrbitSting();
       showOverlay(
         'Orbit Reached! \u{1F680}',
         `Fuel cells collected: ${player.cellsCollected} / ${TOTAL_FUEL_CELLS}\nFuel remaining: ${Math.round(player.fuel)}%\n\nSetting a course for the moon.`,

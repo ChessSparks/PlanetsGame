@@ -3,6 +3,7 @@ import { createStarfield } from '../entities.js';
 import { loadDecoration } from '../game/models.js';
 import { hideHud } from '../game/hud.js';
 import { consumeInteractPress } from '../game/input.js';
+import { playArrivalSting, playMusicTheme, playAmbience } from '../game/audio.js';
 
 // A reusable "flying between worlds" cutscene, used for every inter-level
 // transition except the ground-level liftoff (which lives inside
@@ -143,6 +144,7 @@ export async function createTravelCutscene({
   toAccent = '#5c6670',
   duration = 6,
   shotStyle = 'orbit',
+  musicTheme = null,
   onComplete,
 } = {}) {
   hideHud();
@@ -274,6 +276,14 @@ export async function createTravelCutscene({
     if (t > 0.5 && !midCaptionShown) {
       midCaptionShown = true;
       setCaption(caption, `Approaching ${toLabel}`);
+      playArrivalSting();
+      // Crossfade into the destination's music/ambience partway through the
+      // flight, so the mood has already shifted by the time you land instead
+      // of switching abruptly the instant the next scene loads.
+      if (musicTheme) {
+        playMusicTheme(musicTheme);
+        playAmbience(musicTheme);
+      }
     }
 
     if (t >= 1) finish();

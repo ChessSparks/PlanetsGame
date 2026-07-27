@@ -93,6 +93,7 @@ async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
       toColor: '#9aa3ad',
       toAccent: '#5c6068',
       shotStyle: 'orbit',
+      musicTheme: 'moon',
     }, startMoonPhase).catch((err) => {
       console.error('Failed to start moon phase:', err);
       showOverlay(
@@ -126,6 +127,7 @@ async function startMoonPhase() {
       toColor: '#8a6a4a',
       toAccent: '#4a3626',
       shotStyle: 'flyby',
+      musicTheme: 'client',
     }, startClientWorldPhase).catch((err) => {
       console.error('Failed to start client-world phase:', err);
       showOverlay(
@@ -151,6 +153,7 @@ async function startClientWorldPhase() {
     toColor: '#7bc8ff',
     toAccent: '#3a6a99',
     shotStyle: 'pullback',
+    musicTheme: 'ground',
   };
   const handleReturnTrip = () => startTravelPhase(returnTravelConfig, startGroundPhase).catch((err) => {
     console.error('Failed to start ground phase:', err);

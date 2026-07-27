@@ -12,7 +12,9 @@ import {
 } from '../game/hud.js';
 import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
-import { playDroneAlert, playPickupChime } from '../game/audio.js';
+import {
+  playDroneAlert, playPickupChime, playMusicTheme, playAmbience,
+} from '../game/audio.js';
 import { showCircuitPuzzle } from '../game/circuitPuzzle.js';
 import { showCipherPuzzle } from '../game/cipherPuzzle.js';
 
@@ -229,6 +231,8 @@ function createMapBeacon() {
 
 export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {}) {
   hideHud();
+  playMusicTheme('client');
+  playAmbience('client');
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x2a1a16);
