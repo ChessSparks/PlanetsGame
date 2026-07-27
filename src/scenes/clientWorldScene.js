@@ -105,6 +105,8 @@ const CONTROL_TOWER_BLOCK_RADIUS = 2.4;
 const CONTROL_TOWER_INTERACT_RADIUS = 4.5;
 const EMBED = { ship: 0.5, rock: 0.15, spire: 0.4, console: 0.3, tower: 0.3, building: 0.4 };
 
+const HANDOVER_DURATION = 3.6;
+
 const SENTRY_HAZARD_RADIUS = 1.4;
 const SENTRY_AGGRO_RADIUS = 10;
 const SENTRY_DISENGAGE_RADIUS = 15;
@@ -342,6 +344,8 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   let sentriesDisabled = false;
   let respawnGraceTimer = 0; // blocks new patrol->chase aggro for a moment after a respawn
   let lastElapsed = 0; // captured each frame so resetRun() can relocate sentries outside the normal update tick
+  let handoverElapsed = 0;
+  let handoverDone = false;
 
   function announce(text) {
     announceObjective(text);
@@ -501,14 +505,12 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     next();
   }
 
-  function resolveChoice(handedOver) {
-    delivered = handedOver;
-    choiceMade = true;
-    // Stays in 'dialogue' (not 'playing') through this transitional screen —
-    // otherwise a player who interacts with the ship in the split second
-    // before clicking Continue could reach handleShipInteract() (already
-    // unlocked by choiceMade) before activateSentries() ever runs below,
-    // skipping the sentries/control-tower act entirely.
+  // Stays out of 'playing' through both the handover cutscene and its
+  // result screen — otherwise a player who interacts with the ship in the
+  // split second before clicking Continue could reach handleShipInteract()
+  // (already unlocked by choiceMade) before activateSentries() ever runs
+  // below, skipping the sentries/control-tower act entirely.
+  function showChoiceResultScreen(handedOver) {
     const screen = handedOver
       ? {
         title: 'Delivered',
@@ -523,6 +525,55 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
       state = 'playing';
       announce('Objective: shut down the sentries at the control tower, then get to the ship.');
     });
+  }
+
+  // A close cinematic beat for the astronaut actually presenting the case —
+  // only for the "hand over" branch; refusing skips straight to its result
+  // screen since there's nothing to physically show for it. The client is
+  // deliberately never a visible character (just "a voice out of the
+  // static"), so the spire's own core flaring up as it "receives" the
+  // delivery stands in for a reaction shot.
+  function finishHandoverCutscene() {
+    astronaut.fadeTo('Idle', { duration: 0.2 });
+    showChoiceResultScreen(true);
+  }
+
+  function updateHandoverCutscene(dt, elapsed, camera) {
+    if (consumeInteractPress()) handoverElapsed = HANDOVER_DURATION;
+    else handoverElapsed += dt;
+    const t = Math.min(1, handoverElapsed / HANDOVER_DURATION);
+
+    const playerPos = walker.getPosition(PLANET_RADIUS);
+    camera.position.copy(playerPos)
+      .addScaledVector(walker.forward, 2.2)
+      .addScaledVector(walker.normal, 1.6);
+    camera.up.copy(walker.normal);
+    camera.lookAt(playerPos.clone().addScaledVector(walker.normal, 1.2));
+
+    // A dramatic swell (0 -> 1 -> 0) on the spire's core, well above its
+    // normal idle pulse, timed with the astronaut's presenting gesture.
+    const flare = Math.sin(t * Math.PI);
+    spire.userData.core.material.emissiveIntensity = 1.6 + flare * 3;
+    spire.userData.core.scale.setScalar(1 + flare * 0.6);
+
+    if (t >= 1 && !handoverDone) {
+      handoverDone = true;
+      finishHandoverCutscene();
+    }
+  }
+
+  function resolveChoice(handedOver) {
+    delivered = handedOver;
+    choiceMade = true;
+    if (!handedOver) {
+      showChoiceResultScreen(false);
+      return;
+    }
+    state = 'handover';
+    handoverElapsed = 0;
+    handoverDone = false;
+    astronaut.fadeTo('Interact', { duration: 0.15, loop: false });
+    flashToast('Press E to skip', HANDOVER_DURATION * 1000);
   }
 
   function resolveEnding() {
@@ -737,6 +788,16 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     update(dt, elapsed, camera) {
       lastElapsed = elapsed;
       if (respawnGraceTimer > 0) respawnGraceTimer -= dt;
+
+      if (state === 'handover') {
+        updateHandoverCutscene(dt, elapsed, camera);
+        astronaut.update(dt);
+        updateShadowLight();
+        spire.userData.core.rotation.y += dt * 0.4;
+        updateMinimap();
+        return;
+      }
+
       if (state === 'playing') {
         updateMovement(dt);
         updateInteract();

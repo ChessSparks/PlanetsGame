@@ -368,7 +368,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   // Keys stay off-scene until the key finder is picked up — spawnKeys() adds
   // them in. resetRun() below re-hides everything after a death.
   const keyPickups = await Promise.all(KEY_SPOTS.map(async (spot) => {
-    const mesh = await loadDecoration('/assets/Key.glb', 0.22);
+    const mesh = await loadDecoration('/assets/Key.glb', 0.6);
     hoverPlace(mesh, spot.normal, 1.0);
     return { mesh, normal: spot.normal, collected: false };
   }));
@@ -376,7 +376,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   let shipRepaired = false;
   let fuelSecured = false;
 
-  const finderMesh = await loadDecoration('/assets/compass.glb', 0.6);
+  const finderMesh = await loadDecoration('/assets/compass.glb', 1.0);
   hoverPlace(finderMesh, KEY_FINDER_SPOT.normal, 1.0);
   scene.add(finderMesh);
   let finderCollected = false;
@@ -474,7 +474,7 @@ export async function createGroundScene({ onLaunch } = {}) {
     setKeysDisplay(0, keyPickups.length);
     showOverlay(
       'A Quiet Planet',
-      'Your spaceship (nearby!) needs repairing. First find the key finder device, then use it to track down the 3 hidden keys, then return to the ship and press E.\nTwo of the keys are guarded by patrol drones — get too close and they\'ll chase you down. Touching one is fatal, but you can outrun them.\n\nW/↑: Walk   S/↓: Back   A/D: Turn   Shift: Run   Space: Jump   E: Interact',
+      'Your spaceship (nearby!) needs repairing. First find the key finder device, then use it to track down the 3 hidden parts, then return to the ship and press E.\nTwo of the parts are guarded by patrol drones — get too close and they\'ll chase you down. Touching one is fatal, but you can outrun them.\n\nW/↑: Walk   S/↓: Back   A/D: Turn   Shift: Run   Space: Jump   E: Interact',
       'Begin',
       () => {
         unlockAudio();
@@ -643,7 +643,7 @@ export async function createGroundScene({ onLaunch } = {}) {
         duration: 0.15, loop: false,
         onFinished: () => astronaut.fadeTo('Idle', { duration: 0.2 }),
       });
-      announce('Key finder online. Objective: find the 3 keys hidden across the planet.');
+      announce('Key finder online. Objective: find the 3 parts hidden across the planet.');
     }
   }
 
@@ -671,13 +671,13 @@ export async function createGroundScene({ onLaunch } = {}) {
           guard.disabled = true;
           guard.mode = 'patrol';
           guard.chaseTime = 0;
-          guardMessage = 'Guardian drone deactivated — that key is safe now. ';
+          guardMessage = 'Guardian drone deactivated — that part is safe now. ';
         }
         if (keysCollected >= keyPickups.length) {
-          announce(`${guardMessage}All keys recovered. Objective: return to the spaceship and press E to repair it.`);
+          announce(`${guardMessage}All parts recovered. Objective: return to the spaceship and press E to repair it.`);
         } else {
           if (guardMessage) announce(guardMessage.trim());
-          flashToast(`Key found! (${keysCollected}/${keyPickups.length})`, 2000);
+          flashToast(`Part found! (${keysCollected}/${keyPickups.length})`, 2000);
         }
 
         // A one-off character beat on the very first key of the run —
@@ -730,7 +730,7 @@ export async function createGroundScene({ onLaunch } = {}) {
       return;
     }
     if (keysCollected < keyPickups.length) {
-      flashToast(`Need ${keyPickups.length - keysCollected} more key(s) to repair the ship.`, 2200);
+      flashToast(`Need ${keyPickups.length - keysCollected} more part(s) to repair the ship.`, 2200);
       return;
     }
     shipRepaired = true;

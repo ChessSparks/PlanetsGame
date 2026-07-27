@@ -124,7 +124,7 @@ export function setKeysDisplay(current, total) {
     `;
     document.body.appendChild(el);
   }
-  el.textContent = `\u{1F5DD} Keys: ${current} / ${total}`;
+  el.textContent = `\u{1F5DD} Parts: ${current} / ${total}`;
 }
 
 export function hideKeysDisplay() {
