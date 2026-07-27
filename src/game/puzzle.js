@@ -18,8 +18,8 @@ function ensureDom() {
   overlayEl.className = 'hidden';
   overlayEl.innerHTML = `
     <div id="puzzle-box">
-      <h1>Fuel Cell Lock</h1>
-      <p>Slide the tiles to put them back in order (1-15) to release the fuel cell.</p>
+      <h1 id="puzzle-title">Fuel Cell Lock</h1>
+      <p id="puzzle-body">Slide the tiles to put them back in order (1-15) to release the fuel cell.</p>
       <div id="puzzle-grid"></div>
       <button id="puzzle-close" type="button">Leave</button>
     </div>
@@ -95,10 +95,13 @@ function tryMove(i) {
   }
 }
 
-export function showSlidingPuzzle(onSolved, onCancel) {
+export function showSlidingPuzzle(onSolved, onCancel, title, body) {
   ensureDom();
   onSolvedCallback = onSolved;
   onCancelCallback = onCancel;
+  overlayEl.querySelector('#puzzle-title').textContent = title || 'Fuel Cell Lock';
+  overlayEl.querySelector('#puzzle-body').textContent = body
+    || 'Slide the tiles to put them back in order (1-15) to release the fuel cell.';
   board = shuffledBoard();
   render();
   overlayEl.classList.remove('hidden');

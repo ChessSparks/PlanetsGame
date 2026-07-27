@@ -546,3 +546,89 @@ export function createSpire() {
   group.userData.radius = 5.2;
   return group;
 }
+
+// A procedural industrial building — no matching glb asset exists, so this
+// is a boxy warehouse/factory silhouette with a couple of roof vents and a
+// chimney, randomized per call via width/depth/height so a scattered
+// district doesn't look like the same building copy-pasted everywhere.
+export function createIndustrialBuilding(width, depth, height) {
+  const group = new THREE.Group();
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x2c2624, metalness: 0.35, roughness: 0.75 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: 0x3a3230, metalness: 0.5, roughness: 0.6 });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), wallMat);
+  body.position.y = height / 2;
+  group.add(body);
+
+  const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(width * 1.03, height * 0.06, depth * 1.03), trimMat);
+  roofTrim.position.y = height;
+  group.add(roofTrim);
+
+  const chimney = new THREE.Mesh(
+    new THREE.CylinderGeometry(width * 0.06, width * 0.07, height * 0.4, 8),
+    trimMat,
+  );
+  chimney.position.set(width * 0.28, height + height * 0.2, depth * 0.22);
+  group.add(chimney);
+
+  const ventCount = 2 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < ventCount; i++) {
+    const vent = new THREE.Mesh(new THREE.BoxGeometry(width * 0.14, height * 0.08, depth * 0.14), trimMat);
+    vent.position.set(
+      (Math.random() - 0.5) * width * 0.6,
+      height + height * 0.04,
+      (Math.random() - 0.5) * depth * 0.6,
+    );
+    group.add(vent);
+  }
+
+  group.userData.radius = Math.max(width, depth) * 0.55;
+  return group;
+}
+
+// A flat, slightly reflective rectangle laid on the surface as a paved
+// street/lot beneath scattered buildings — this is what makes a cluster of
+// boxes read as "district" instead of "boxes standing in a field."
+// No baked-in rotation — orientToNormal() overwrites an object's quaternion
+// entirely rather than composing with it, so any pre-set rotation here would
+// just get discarded. Callers lay this flat via orientToNormal() followed by
+// a relative pad.rotateX(-Math.PI / 2) (see how the ship's readyRing does
+// the same thing in groundScene.js).
+export function createStreetPad(width, depth) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x1c1a1a, metalness: 0.2, roughness: 0.85 });
+  return new THREE.Mesh(new THREE.PlaneGeometry(width, depth), mat);
+}
+
+// The control tower — where the sentries get shut down once they've turned
+// hostile. Deliberately utilitarian next to the spire's menace: a boxy
+// mast with a radar dish and a blinking beacon, reading as "comms/security
+// infrastructure" rather than "weapon."
+export function createControlTower() {
+  const group = new THREE.Group();
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.5, roughness: 0.5 });
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.2, 2.6), baseMat);
+  base.position.y = 1.1;
+  group.add(base);
+
+  const mastMat = new THREE.MeshStandardMaterial({ color: 0x3a3a42, metalness: 0.6, roughness: 0.4 });
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 9, 8), mastMat);
+  mast.position.y = 2.2 + 4.5;
+  group.add(mast);
+
+  const dishMat = new THREE.MeshStandardMaterial({ color: 0xc9ccd2, metalness: 0.4, roughness: 0.35, side: THREE.DoubleSide });
+  const dish = new THREE.Mesh(new THREE.CircleGeometry(1.6, 20), dishMat);
+  dish.position.y = 2.2 + 9;
+  dish.rotation.y = Math.PI / 4;
+  dish.rotation.x = -0.4;
+  group.add(dish);
+  group.userData.dish = dish;
+
+  const beaconMat = new THREE.MeshBasicMaterial({ color: 0x66ffcc });
+  const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 10), beaconMat);
+  beacon.position.y = 2.2 + 9.6;
+  group.add(beacon);
+  group.userData.beacon = beacon;
+
+  group.userData.radius = 2.4;
+  return group;
+}
