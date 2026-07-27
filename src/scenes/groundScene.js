@@ -58,6 +58,9 @@ const HOUSE_SPOTS = [
   { normal: sph(24, 192), clear: 0.28 },
 ];
 const VOLCANO_SPOT = { normal: sph(-35, 12), clear: 0.4 };
+// Checked against every other feature (nearest is MEADOW1, ~12.9 units away)
+// so the lake's water body plus its shoreline rocks have plenty of room.
+const LAKE_SPOT = { normal: sph(50, -70), clear: 0.35 };
 // A short walk from the main volcano — where the fuel puzzle lives, found
 // only after the ship is repaired.
 const SMALL_VOLCANO_SPOT = { normal: sph(-24, 30), clear: 0.15 };
@@ -130,10 +133,14 @@ const CLEAR_ZONES = [
   KEY_FINDER_SPOT,
   VOLCANO_SPOT,
   SMALL_VOLCANO_SPOT,
+  LAKE_SPOT,
   ...HOUSE_SPOTS,
   ...KEY_SPOTS,
   ...WILDLIFE_SPOTS.map((w) => ({ normal: w.normal, clear: 0.11 })),
 ];
+
+const LAKE_RADIUS = 4.2;
+const LAKE_SHORE_ROCK_COUNT = 8;
 
 // Where a drone would be right now if it were purely following its patrol
 // orbit, regardless of its current actual position (used both for normal
@@ -211,8 +218,33 @@ const SUNS = [
 // everything looking like it hovered just above the surface. Sinking each
 // category in slightly by its own depth hides that gap.
 const EMBED = {
-  forest: 0.35, house: 0.95, volcano: 1.4, smallVolcano: 0.55, wildlife: 0.25, ship: 0.5,
+  forest: 0.35, house: 0.95, volcano: 1.4, smallVolcano: 0.55, wildlife: 0.25, ship: 0.5, lake: 0.5, lakeRock: 0.15,
 };
+
+// A still, reflective water disc — no lake asset exists, so this is built
+// procedurally like everything else non-model in the game (starfields,
+// smoke, suns). A slightly-raised, softly glowing "glint" disc sits just
+// above the water and pulses gently, standing in for sunlight shimmer
+// without needing an actual animated water shader.
+function createLakeWater(radius) {
+  const group = new THREE.Group();
+
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x1c4f66, emissive: 0x0a2a38, emissiveIntensity: 0.4, roughness: 0.12, metalness: 0.35,
+  });
+  const water = new THREE.Mesh(new THREE.CircleGeometry(radius, 48), waterMat);
+  group.add(water);
+
+  const glintMat = new THREE.MeshBasicMaterial({
+    color: 0xbfe8ff, transparent: true, opacity: 0.22, depthWrite: false,
+  });
+  const glint = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.55, 32), glintMat);
+  glint.position.z = 0.01;
+  group.add(glint);
+  group.userData.glint = glint;
+
+  return group;
+}
 
 function placeOnSurface(object, normal, embed) {
   object.position.copy(normal).multiplyScalar(PLANET_RADIUS - embed);
@@ -284,6 +316,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   const obstacles = []; // { normal, radius } — filled in as blocking decorations load
   const windSwayables = []; // { mesh, baseQuat, amplitude, speed, phase } — foliage that sways in the wind
   const wildlifeAnimals = []; // { animal, idleTimer } — deer/stag, animated once loaded
+  const waterFeatures = []; // { glint, phase } — lake glint sprites, pulsed each frame
   let jumpVelocity = 0;
   let jumpHeight = 0;
 
@@ -330,7 +363,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   // The rest of the decorations load and populate in the background so a
   // single bad model (network hiccup, bad asset) can't ever block the planet
   // itself from rendering — each piece is independently fault-tolerant.
-  populatePlanet(scene, satellite, earth, obstacles, windSwayables, wildlifeAnimals);
+  populatePlanet(scene, satellite, earth, obstacles, windSwayables, wildlifeAnimals, waterFeatures);
 
   // Keys stay off-scene until the key finder is picked up — spawnKeys() adds
   // them in. resetRun() below re-hides everything after a death.
@@ -866,6 +899,14 @@ export async function createGroundScene({ onLaunch } = {}) {
     }
   }
 
+  function updateWater(elapsed) {
+    for (const feature of waterFeatures) {
+      feature.glint.material.opacity = 0.14 + (Math.sin(elapsed * 0.5 + feature.phase) * 0.5 + 0.5) * 0.16;
+      const scale = 1 + Math.sin(elapsed * 0.35 + feature.phase) * 0.08;
+      feature.glint.scale.set(scale, scale, 1);
+    }
+  }
+
   function spawnSmokePuff() {
     const puff = createSmokePuff();
     puff.position.copy(ship.position).addScaledVector(
@@ -941,6 +982,7 @@ export async function createGroundScene({ onLaunch } = {}) {
       updateWildlife(dt);
       updateSmoke(dt);
       updateWind(elapsed);
+      updateWater(elapsed);
       updateFuelBeacon(elapsed);
       updateMinimap();
     },
@@ -970,7 +1012,7 @@ function hitsObstacle(normal, obstacles) {
   return false;
 }
 
-async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, windSwayables, wildlifeAnimals) {
+async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, windSwayables, wildlifeAnimals, waterFeatures) {
   const tasks = [
     scatterForest(scene, obstacles, windSwayables),
     scatterMeadows(scene, windSwayables),
@@ -978,6 +1020,7 @@ async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, wind
     placeVolcano(scene, obstacles),
     placeSmallVolcano(scene, obstacles),
     placeWildlife(scene, wildlifeAnimals),
+    placeLake(scene, obstacles, waterFeatures),
     loadDecoration('/assets/satellite.glb', 3.2).then((wrapper) => {
       wrapper.position.y -= 1.6; // center it rather than feet-at-origin, since it floats in space
       satelliteGroup.add(wrapper);
@@ -1114,6 +1157,42 @@ async function placeSmallVolcano(scene, obstacles) {
   orientToNormal(volcano, SMALL_VOLCANO_SPOT.normal, 1.4);
   scene.add(volcano);
   obstacles.push({ normal: SMALL_VOLCANO_SPOT.normal.clone(), radius: SMALL_VOLCANO_BLOCK_RADIUS });
+}
+
+// Water is a flat disc laid on the curved terrain — no baked-in rotation
+// (orientToNormal overwrites the whole quaternion, same gotcha as the
+// client-world street pads), so it's rotated flat via a relative rotateX
+// *after* orientToNormal runs. Solid (blocks walking into it, like any
+// other obstacle) with a ring of rock decorations along the shore both for
+// looks and to help hide the small curvature gap a flat disc this size gets
+// at its rim on a 22-unit-radius planet.
+async function placeLake(scene, obstacles, waterFeatures) {
+  const water = createLakeWater(LAKE_RADIUS);
+  orientToNormal(water, LAKE_SPOT.normal, 0);
+  water.rotateX(-Math.PI / 2);
+  placeOnSurface(water, LAKE_SPOT.normal, EMBED.lake);
+  scene.add(water);
+  obstacles.push({ normal: LAKE_SPOT.normal.clone(), radius: LAKE_RADIUS });
+  waterFeatures.push({ glint: water.userData.glint, phase: Math.random() * Math.PI * 2 });
+
+  const shoreBasis = tangentBasis(LAKE_SPOT.normal);
+  await Promise.all(Array.from({ length: LAKE_SHORE_ROCK_COUNT }).map(async (_, i) => {
+    try {
+      const angle = (i / LAKE_SHORE_ROCK_COUNT) * Math.PI * 2 + Math.random() * 0.3;
+      const dist = (LAKE_RADIUS + 0.6 + Math.random() * 1.2) / PLANET_RADIUS;
+      const point = LAKE_SPOT.normal.clone()
+        .addScaledVector(shoreBasis.u, Math.cos(angle) * dist)
+        .addScaledVector(shoreBasis.v, Math.sin(angle) * dist)
+        .normalize();
+      const height = 0.5 + Math.random() * 0.6;
+      const rock = await loadDecoration('/assets/rock.glb', height);
+      placeOnSurface(rock, point, EMBED.lakeRock);
+      orientToNormal(rock, point, Math.random() * Math.PI * 2);
+      scene.add(rock);
+    } catch (err) {
+      console.error('Failed to place lake shore rock:', err);
+    }
+  }));
 }
 
 // Idle-ish clips the deer/stag models ship with — cycled between so they

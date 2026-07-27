@@ -106,9 +106,13 @@ function ensureDom() {
 }
 
 function render() {
+  // Cells only glow once the WHOLE path connects, not individually as each
+  // one happens to land in the right orientation — a lit tile mid-puzzle
+  // would give away progress the puzzle is meant to make you work out.
+  const allSolved = CELLS.every((_, idx) => isCellSolved(idx));
   CELLS.forEach((cell, i) => {
     innerEls[i].style.transform = `rotate(${rotation[i] * 90}deg)`;
-    cellEls[i].classList.toggle('circuit-solved', isCellSolved(i));
+    cellEls[i].classList.toggle('circuit-solved', allSolved);
   });
 }
 
