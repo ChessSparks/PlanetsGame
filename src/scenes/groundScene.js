@@ -3,17 +3,17 @@ import {
   createPlanetGround, createDrone, createOrbitRing, createSun,
 } from '../entities.js';
 import { loadAstronaut } from '../game/character.js';
-import { loadDecoration } from '../game/models.js';
+import { loadDecoration, loadAnimatedDecoration } from '../game/models.js';
 import { createPlanetWalker, fibonacciSphere, orientToNormal } from '../game/planet.js';
 import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
 import {
   hideHud, showOverlay, flashToast, setKeysDisplay, announceObjective, flashScreenWhite,
 } from '../game/hud.js';
-import { speak } from '../game/voice.js';
+import { speak, speakPlayer } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
 import { showSlidingPuzzle, hideSlidingPuzzle } from '../game/puzzle.js';
 import {
-  unlockAudio, playFootstep, playPickupChime, playDroneAlert,
+  unlockAudio, playPickupChime, playDroneAlert, startAmbientMusic,
 } from '../game/audio.js';
 
 const PLANET_RADIUS = 22;
@@ -32,8 +32,6 @@ const GRAVITY = 18;
 // scaling the whole rig (rather than individual bones) is skinning-safe.
 const JUMP_SQUASH_REFERENCE = 0.4;
 const JUMP_SQUASH_AMOUNT = 0.08;
-const FOOTSTEP_INTERVAL_WALK = 0.42;
-const FOOTSTEP_INTERVAL_RUN = 0.26;
 
 const CAM_DISTANCE = 6.5;
 const CAM_HEIGHT = 3.0;
@@ -71,6 +69,19 @@ const WILDLIFE_SPOTS = [
 ];
 const SPAWN_CLEAR = { normal: new THREE.Vector3(0, 1, 0), clear: 0.16 };
 
+// Dense grassy meadows — distinct from the sparse, uniformly-scattered grass
+// already mixed into FOREST, these are meant to read as actual grassy fields
+// rather than isolated clumps.
+const MEADOW_SPOTS = [
+  sph(45, -20),
+  sph(-50, 130),
+  sph(0, -170),
+  sph(55, 90),
+  sph(-60, -40),
+];
+const MEADOW_GRASS_COUNT = 14; // instances per meadow
+const MEADOW_RADIUS = 4; // arc-length jitter radius (world units) around each center
+
 // The 3 keys needed to repair the spaceship, spread out to encourage
 // exploring the whole planet. Two of them are guarded by patrol drones.
 const KEY_SPOTS = [
@@ -82,7 +93,12 @@ const DRONE_PATROLS = [
   { center: KEY_SPOTS[0].normal, orbitRadius: 3.2, altitude: 2.4, speed: 0.6, phase: 0 },
   { center: KEY_SPOTS[2].normal, orbitRadius: 3.6, altitude: 2.6, speed: 0.5, phase: 2.1 },
 ];
-const KEY_PICKUP_RADIUS = 1.1;
+// Keys hover 1 unit above the surface, and this radius is a full 3D
+// distance (player-to-hovering-key), so the old 1.1 left barely ~0.46 units
+// of actual horizontal slack — you had to walk almost exactly under the key
+// to trigger it. 1.8 gives ~1.5 units of horizontal slack, so brushing past
+// it counts as a touch instead of requiring dead-center alignment.
+const KEY_PICKUP_RADIUS = 1.8;
 const FINDER_PICKUP_RADIUS = 1.2;
 const DRONE_HAZARD_RADIUS = 1.4;
 // Patrol orbit keeps a drone's distance from the player's max walking height
@@ -156,11 +172,11 @@ function tangentBasis(normal) {
 // player; low foliage stays walk-through. sway* marks it as wind-animated
 // (rocks stay rigid).
 const FOREST = [
-  { url: '/assets/pine.glb', height: [3.0, 5.0], weight: 5, blockRadiusFactor: 0.16, swayAmplitude: 0.03, swaySpeed: 0.7 },
+  { url: '/assets/pine.glb', height: [4.2, 7.0], weight: 5, blockRadiusFactor: 0.16, swayAmplitude: 0.03, swaySpeed: 0.7 },
   { url: '/assets/rock.glb', height: [0.6, 1.8], weight: 4, blockRadiusFactor: 0.5 },
   { url: '/assets/bush.glb', height: [0.6, 1.1], weight: 3, swayAmplitude: 0.06, swaySpeed: 1.1 },
   { url: '/assets/fern.glb', height: [0.4, 0.7], weight: 3, swayAmplitude: 0.09, swaySpeed: 1.4 },
-  { url: '/assets/grass.glb', height: [0.3, 0.5], weight: 3, swayAmplitude: 0.12, swaySpeed: 1.7 },
+  { url: '/assets/grass.glb', height: [0.55, 0.85], weight: 3, swayAmplitude: 0.12, swaySpeed: 1.7 },
   { url: '/assets/plant.glb', height: [0.5, 0.9], weight: 2, swayAmplitude: 0.08, swaySpeed: 1.3 },
 ];
 const FOREST_COUNT = 220;
@@ -266,9 +282,9 @@ export async function createGroundScene({ onLaunch } = {}) {
   let walker = createPlanetWalker();
   const obstacles = []; // { normal, radius } — filled in as blocking decorations load
   const windSwayables = []; // { mesh, baseQuat, amplitude, speed, phase } — foliage that sways in the wind
+  const wildlifeAnimals = []; // { animal, idleTimer } — deer/stag, animated once loaded
   let jumpVelocity = 0;
   let jumpHeight = 0;
-  let footstepTimer = 0;
 
   const astronaut = await loadAstronaut();
   scene.add(astronaut.object3D);
@@ -313,7 +329,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   // The rest of the decorations load and populate in the background so a
   // single bad model (network hiccup, bad asset) can't ever block the planet
   // itself from rendering — each piece is independently fault-tolerant.
-  populatePlanet(scene, satellite, earth, obstacles, windSwayables);
+  populatePlanet(scene, satellite, earth, obstacles, windSwayables, wildlifeAnimals);
 
   // Keys stay off-scene until the key finder is picked up — spawnKeys() adds
   // them in. resetRun() below re-hides everything after a death.
@@ -427,8 +443,9 @@ export async function createGroundScene({ onLaunch } = {}) {
       'Begin',
       () => {
         unlockAudio();
+        startAmbientMusic();
         state = 'playing';
-        announce('Objective: find the key finder device nearby.');
+        announce('This is Corthana, your ship\'s onboard AI — still online after the crash. Objective: find the key finder device nearby.');
       },
     );
   }
@@ -541,16 +558,6 @@ export async function createGroundScene({ onLaunch } = {}) {
       walker.forward.copy(prevForward);
     }
 
-    if (speed !== 0 && jumpHeight <= 0) {
-      footstepTimer -= dt;
-      if (footstepTimer <= 0) {
-        playFootstep(anim === 'Run' ? 1 : 0.7);
-        footstepTimer = anim === 'Run' ? FOOTSTEP_INTERVAL_RUN : FOOTSTEP_INTERVAL_WALK;
-      }
-    } else {
-      footstepTimer = 0;
-    }
-
     const newPos = walker.getPosition(PLANET_RADIUS);
     for (const drone of drones) {
       if (drone.disabled) continue;
@@ -635,6 +642,21 @@ export async function createGroundScene({ onLaunch } = {}) {
         } else {
           if (guardMessage) announce(guardMessage.trim());
           flashToast(`Key found! (${keysCollected}/${keyPickups.length})`, 2000);
+        }
+
+        // A one-off character beat on the very first key of the run —
+        // staggered after the pickup feedback above so they don't fight
+        // over the same toast/banner elements. Corthana's reply is chained
+        // off the astronaut's line actually finishing (onend), not a guessed
+        // delay, so her speech can never truncate his.
+        if (keysCollected === 1) {
+          setTimeout(() => {
+            const line = 'It\'s too quiet out here. Where is everybody?';
+            flashToast(`"...${line}"`, 3200);
+            speakPlayer(line, () => {
+              announce('I\'m not reading any life signs on this planet — nothing, except the plant life. Whatever happened here, it was a long time before we arrived.');
+            });
+          }, 1400);
         }
       }
     }
@@ -729,15 +751,15 @@ export async function createGroundScene({ onLaunch } = {}) {
     }
 
     addBlip(SHIP_SPOT.normal, shipRepaired ? '#7bffb0' : '#ffd166', 7, 'ship');
-    addBlip(VOLCANO_SPOT.normal, '#ff5e3a', 5);
+    addBlip(VOLCANO_SPOT.normal, '#ff5e3a', 6, 'volcano');
     if (!finderCollected) addBlip(KEY_FINDER_SPOT.normal, '#ffb347', 5);
     if (finderCollected) {
       for (const key of keyPickups) if (!key.collected) addBlip(key.normal, '#7be0ff', 4);
     }
-    if (shipRepaired && !fuelSecured) addBlip(SMALL_VOLCANO_SPOT.normal, '#ff8c42', 5);
+    if (shipRepaired && !fuelSecured) addBlip(SMALL_VOLCANO_SPOT.normal, '#ff8c42', 6, 'volcano');
     for (const drone of drones) {
       if (drone.disabled) continue;
-      addBlip(drone.mesh.position.clone().normalize(), '#ff4d4d', 4);
+      addBlip(drone.mesh.position.clone().normalize(), '#ff4d4d', 5, 'drone');
     }
 
     minimap.draw(blips);
@@ -781,6 +803,18 @@ export async function createGroundScene({ onLaunch } = {}) {
       const chasing = drone.mode === 'chase';
       for (const r of drone.mesh.userData.rotors) r.rotation.y += dt * (chasing ? 50 : 30);
       drone.mesh.userData.blinkLight.visible = Math.floor(elapsed * (chasing ? 8 : 4)) % 2 === 0;
+    }
+  }
+
+  function updateWildlife(dt) {
+    for (const entry of wildlifeAnimals) {
+      entry.animal.update(dt);
+      entry.idleTimer -= dt;
+      if (entry.idleTimer <= 0) {
+        const next = WILDLIFE_STATES[Math.floor(Math.random() * WILDLIFE_STATES.length)];
+        entry.animal.fadeTo(next, { duration: 0.6 });
+        entry.idleTimer = 5 + Math.random() * 8;
+      }
     }
   }
 
@@ -900,10 +934,14 @@ export async function createGroundScene({ onLaunch } = {}) {
       updateClouds(dt);
       updateEarth(dt);
       updateDrones(dt, elapsed, walker.getPosition(PLANET_RADIUS), walker.normal);
+      updateWildlife(dt);
       updateSmoke(dt);
       updateWind(elapsed);
       updateFuelBeacon(elapsed);
       updateMinimap();
+    },
+    destroy() {
+      minimap.destroy();
     },
   };
 }
@@ -928,13 +966,14 @@ function hitsObstacle(normal, obstacles) {
   return false;
 }
 
-async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, windSwayables) {
+async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, windSwayables, wildlifeAnimals) {
   const tasks = [
     scatterForest(scene, obstacles, windSwayables),
+    scatterMeadows(scene, windSwayables),
     placeHouses(scene, obstacles),
     placeVolcano(scene, obstacles),
     placeSmallVolcano(scene, obstacles),
-    placeWildlife(scene),
+    placeWildlife(scene, wildlifeAnimals),
     loadDecoration('/assets/satellite.glb', 3.2).then((wrapper) => {
       wrapper.position.y -= 1.6; // center it rather than feet-at-origin, since it floats in space
       satelliteGroup.add(wrapper);
@@ -987,6 +1026,44 @@ async function scatterForest(scene, obstacles, windSwayables) {
   }));
 }
 
+// A handful of dense grassy patches (distinct from the sparse grass mixed
+// into FOREST) — each meadow center gets many grass instances jittered
+// within MEADOW_RADIUS, walk-through (no obstacle) and wind-swaying.
+async function scatterMeadows(scene, windSwayables) {
+  const tasks = [];
+  for (const center of MEADOW_SPOTS) {
+    const { u, v } = tangentBasis(center);
+    for (let i = 0; i < MEADOW_GRASS_COUNT; i++) {
+      tasks.push((async () => {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = Math.random() * MEADOW_RADIUS;
+        const point = center.clone()
+          .addScaledVector(u, (Math.cos(angle) * dist) / PLANET_RADIUS)
+          .addScaledVector(v, (Math.sin(angle) * dist) / PLANET_RADIUS)
+          .normalize();
+        if (inClearZone(point)) return;
+        try {
+          const height = 0.55 + Math.random() * 0.3;
+          const instance = await loadDecoration('/assets/grass.glb', height);
+          placeOnSurface(instance, point, EMBED.forest);
+          orientToNormal(instance, point, Math.random() * Math.PI * 2);
+          scene.add(instance);
+          windSwayables.push({
+            mesh: instance,
+            baseQuat: instance.quaternion.clone(),
+            amplitude: 0.12,
+            speed: 1.7,
+            phase: Math.random() * Math.PI * 2,
+          });
+        } catch (err) {
+          console.error('Failed to place meadow grass:', err);
+        }
+      })());
+    }
+  }
+  await Promise.all(tasks);
+}
+
 // Loaded and placed eagerly (awaited, not part of populatePlanet's
 // fire-and-forget tasks) because the crash cutscene needs the actual mesh
 // in hand to animate falling into its final resting transform.
@@ -1035,13 +1112,19 @@ async function placeSmallVolcano(scene, obstacles) {
   obstacles.push({ normal: SMALL_VOLCANO_SPOT.normal.clone(), radius: SMALL_VOLCANO_BLOCK_RADIUS });
 }
 
-async function placeWildlife(scene) {
+// Idle-ish clips the deer/stag models ship with — cycled between so they
+// read as alive rather than a frozen static prop.
+const WILDLIFE_STATES = ['Idle', 'Eating', 'Idle_Headlow', 'Idle_2'];
+
+async function placeWildlife(scene, wildlifeAnimals) {
   await Promise.all(WILDLIFE_SPOTS.map(async (spot) => {
     try {
-      const animal = await loadDecoration(spot.url, spot.height);
-      placeOnSurface(animal, spot.normal, EMBED.wildlife);
-      orientToNormal(animal, spot.normal, Math.random() * Math.PI * 2);
-      scene.add(animal);
+      const animal = await loadAnimatedDecoration(spot.url, spot.height);
+      placeOnSurface(animal.object3D, spot.normal, EMBED.wildlife);
+      orientToNormal(animal.object3D, spot.normal, Math.random() * Math.PI * 2);
+      scene.add(animal.object3D);
+      animal.fadeTo('Idle', { duration: 0 });
+      wildlifeAnimals.push({ animal, idleTimer: 4 + Math.random() * 6 });
     } catch (err) {
       console.error(`Failed to place ${spot.url}:`, err);
     }

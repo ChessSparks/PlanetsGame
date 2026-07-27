@@ -21,6 +21,10 @@ export function hideLoadingScreen() {
   loadingScreen.classList.add('hidden');
 }
 
+export function showLoadingScreen() {
+  loadingScreen.classList.remove('hidden');
+}
+
 const overlay = document.getElementById('message-overlay');
 const messageTitle = document.getElementById('message-title');
 const messageBody = document.getElementById('message-body');
@@ -98,15 +102,31 @@ export function announceObjective(text) {
     el.id = 'objective-banner';
     el.style.cssText = `
       position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
-      background: rgba(6,14,32,0.88); color: #9be8ff; padding: 12px 28px;
+      display: flex; align-items: flex-start; gap: 12px;
+      background: rgba(6,14,32,0.9); color: #eaf6ff; padding: 10px 26px 12px 12px;
       border-radius: 12px; border: 1px solid rgba(120,200,255,0.4);
-      font-size: 15px; font-weight: 600; letter-spacing: 0.3px; text-align: center;
-      max-width: 520px; pointer-events: none; z-index: 18; transition: opacity 0.4s ease;
-      box-shadow: 0 0 30px rgba(80,180,255,0.2);
+      text-align: left; max-width: 460px; pointer-events: none; z-index: 18;
+      transition: opacity 0.4s ease; box-shadow: 0 0 30px rgba(80,180,255,0.2);
+    `;
+    el.innerHTML = `
+      <img src="/assets/images/cortana-ai.png" alt="" style="
+        width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+        flex-shrink: 0; margin-top: 1px; border: 1px solid rgba(120,200,255,0.6);
+        box-shadow: 0 0 12px rgba(80,180,255,0.6);
+      ">
+      <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0;">
+        <span style="
+          font-size: 11px; font-weight: 700; letter-spacing: 1.6px;
+          text-transform: uppercase; color: #7fd8ff;
+        ">Corthana</span>
+        <span id="objective-text" style="
+          font-size: 14.5px; font-weight: 500; line-height: 1.4; color: #eaf6ff;
+        "></span>
+      </div>
     `;
     document.body.appendChild(el);
   }
-  el.textContent = `\u{1F916} AI: ${text}`;
+  el.querySelector('#objective-text').textContent = text;
   el.style.opacity = '1';
   clearTimeout(el._hideTimer);
   el._hideTimer = setTimeout(() => { el.style.opacity = '0'; }, 5200);

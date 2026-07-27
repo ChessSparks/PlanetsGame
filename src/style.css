@@ -277,3 +277,80 @@ html, body {
 #puzzle-close:hover {
   filter: brightness(1.2);
 }
+
+#starchart-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 6, 20, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#starchart-overlay.hidden {
+  display: none;
+}
+
+#starchart-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(10, 18, 40, 0.95);
+  border: 1px solid rgba(140, 180, 255, 0.4);
+  box-shadow: 0 0 40px rgba(120, 160, 255, 0.25);
+}
+
+#starchart-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#starchart-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 18px;
+  max-width: 260px;
+}
+
+#starchart-ring {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 0 auto 20px;
+}
+
+.starchart-node {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(140, 180, 255, 0.5);
+  background: rgba(80, 110, 180, 0.25);
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.starchart-node.lit {
+  background: #8fd6ff;
+  box-shadow: 0 0 18px 6px rgba(143, 214, 255, 0.8);
+}
+
+#starchart-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#starchart-close:hover {
+  filter: brightness(1.2);
+}

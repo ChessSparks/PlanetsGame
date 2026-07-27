@@ -1,10 +1,9 @@
 // Procedurally synthesized SFX via the Web Audio API — the project has no
-// sound asset files, so footsteps/chime/alert are generated tones/noise
-// rather than loaded clips. Browsers block audio until a user gesture, so
-// unlockAudio() must be called from a click handler (the tutorial overlay's
-// "Begin" button) before any of these will actually produce sound.
+// sound asset files, so chime/alert/music are generated tones rather than
+// loaded clips. Browsers block audio until a user gesture, so unlockAudio()
+// must be called from a click handler (the tutorial overlay's "Begin"
+// button) before any of these will actually produce sound.
 let ctx = null;
-let noiseBuffer = null;
 
 function getContext() {
   if (!ctx) {
@@ -17,58 +16,6 @@ function getContext() {
 export function unlockAudio() {
   const c = getContext();
   if (c && c.state === 'suspended') c.resume();
-}
-
-function getNoiseBuffer(c) {
-  if (!noiseBuffer) {
-    const length = Math.floor(c.sampleRate * 0.3);
-    noiseBuffer = c.createBuffer(1, length, c.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
-  }
-  return noiseBuffer;
-}
-
-let stepIndex = 0;
-
-// Two layers per step — a filtered noise transient swept downward (a
-// dustier "boot crunching regolith" texture instead of a flat click) plus a
-// low sine thump underneath for a sense of weight — alternating slightly by
-// step parity so it doesn't sound like the exact same sample on repeat.
-export function playFootstep(intensity = 1) {
-  const c = getContext();
-  if (!c || c.state !== 'running') return;
-  const now = c.currentTime;
-  stepIndex += 1;
-  const variant = stepIndex % 2 === 0 ? 1 : -1;
-
-  const src = c.createBufferSource();
-  src.buffer = getNoiseBuffer(c);
-  const filter = c.createBiquadFilter();
-  filter.type = 'bandpass';
-  filter.Q.value = 0.8;
-  const baseFreq = 1300 + variant * 150 + Math.random() * 250;
-  filter.frequency.setValueAtTime(baseFreq, now);
-  filter.frequency.exponentialRampToValueAtTime(baseFreq * 0.3, now + 0.1);
-  const noiseGain = c.createGain();
-  const noiseVol = 0.12 * intensity;
-  noiseGain.gain.setValueAtTime(noiseVol, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
-  src.connect(filter).connect(noiseGain).connect(c.destination);
-  src.start(now);
-  src.stop(now + 0.13);
-
-  const thump = c.createOscillator();
-  thump.type = 'sine';
-  thump.frequency.setValueAtTime(115 + variant * 10, now);
-  thump.frequency.exponentialRampToValueAtTime(50, now + 0.09);
-  const thumpGain = c.createGain();
-  const thumpVol = 0.11 * intensity;
-  thumpGain.gain.setValueAtTime(thumpVol, now);
-  thumpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
-  thump.connect(thumpGain).connect(c.destination);
-  thump.start(now);
-  thump.stop(now + 0.12);
 }
 
 export function playPickupChime() {
@@ -88,6 +35,61 @@ export function playPickupChime() {
     osc.start(start);
     osc.stop(start + 0.3);
   });
+}
+
+let musicStarted = false;
+let musicGain = null;
+const MUSIC_LEVEL = 0.045;
+
+// A slowly-breathing ambient pad (a handful of detuned, LFO-modulated
+// oscillators sustained forever, no clips/looping needed) — there are no
+// music asset files in the project, so this substitutes for a proper score.
+// Idempotent and very quiet by design so it sits under the voice/SFX rather
+// than competing with them.
+export function startAmbientMusic() {
+  const c = getContext();
+  if (!c || musicStarted) return;
+  musicStarted = true;
+
+  const master = c.createGain();
+  musicGain = master;
+  master.gain.value = 0;
+  master.connect(c.destination);
+  master.gain.linearRampToValueAtTime(MUSIC_LEVEL, c.currentTime + 4);
+
+  const chordFreqs = [55, 82.5, 110, 138.6]; // sparse open chord, low register
+  chordFreqs.forEach((freq, i) => {
+    const osc = c.createOscillator();
+    osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+    osc.frequency.value = freq;
+
+    const noteGain = c.createGain();
+    const baseLevel = 1 / chordFreqs.length;
+    noteGain.gain.value = baseLevel;
+
+    // Slow LFO on this note's own gain gives the pad a gentle "breathing"
+    // swell instead of a static drone.
+    const lfo = c.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.04 + i * 0.015;
+    const lfoGain = c.createGain();
+    lfoGain.gain.value = baseLevel * 0.5;
+    lfo.connect(lfoGain).connect(noteGain.gain);
+    lfo.start();
+
+    osc.connect(noteGain).connect(master);
+    osc.start();
+  });
+}
+
+// Web Speech utterances play through a separate audio pipeline from Web
+// Audio, so there's no way to directly boost TTS output above its own
+// volume=1.0 ceiling — ducking the music out of the way while a character
+// is speaking is what actually makes the voice read as more prominent.
+export function duckMusic(active) {
+  if (!musicGain || !ctx) return;
+  const target = active ? MUSIC_LEVEL * 0.2 : MUSIC_LEVEL;
+  musicGain.gain.linearRampToValueAtTime(target, ctx.currentTime + 0.35);
 }
 
 export function playDroneAlert() {

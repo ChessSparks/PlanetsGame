@@ -20,6 +20,46 @@ function drawShipIcon(ctx, x, y, size, color) {
   ctx.restore();
 }
 
+// A small mountain silhouette with a spark at the peak, for volcano landmarks.
+function drawVolcanoIcon(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.lineTo(size * 0.9, size * 0.8);
+  ctx.lineTo(-size * 0.9, size * 0.8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#ffcf5c';
+  ctx.beginPath();
+  ctx.arc(0, -size * 0.85, size * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// A quadcopter-from-above X with a center hub, for drones.
+function drawDroneIcon(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(1, size * 0.35);
+  ctx.beginPath();
+  ctx.moveTo(-size, -size);
+  ctx.lineTo(size, size);
+  ctx.moveTo(size, -size);
+  ctx.lineTo(-size, size);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 // A GTA-style radar: player is always the fixed center arrow pointing "up"
 // (the direction they're facing); every blip is drawn at its position
 // relative to the player's own forward/right tangent vectors, so it rotates
@@ -72,6 +112,10 @@ export function createMinimap() {
       const size = (b.size || 4) * (offEdge ? 0.8 : 1);
       if (b.shape === 'ship') {
         drawShipIcon(ctx, px, py, (b.size || 7) * (offEdge ? 0.8 : 1), b.color);
+      } else if (b.shape === 'volcano') {
+        drawVolcanoIcon(ctx, px, py, (b.size || 6) * (offEdge ? 0.8 : 1), b.color);
+      } else if (b.shape === 'drone') {
+        drawDroneIcon(ctx, px, py, (b.size || 5) * (offEdge ? 0.8 : 1), b.color);
       } else {
         ctx.fillStyle = b.color;
         ctx.beginPath();

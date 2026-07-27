@@ -39,7 +39,7 @@ function loadRaw(url) {
       model.position.x -= (box.max.x + box.min.x) / 2;
       model.position.z -= (box.max.z + box.min.z) / 2;
       model.position.y -= box.min.y;
-      return { model, height };
+      return { model, height, animations: gltf.animations };
     }));
   }
   return rawCache.get(url);
@@ -54,4 +54,42 @@ export async function loadDecoration(url, targetHeight) {
   const wrapper = new THREE.Group();
   wrapper.add(clone);
   return wrapper;
+}
+
+// Same normalization/caching as loadDecoration, but also wires up an
+// AnimationMixer for the clone's own clips (deer/stag etc. ship with a full
+// animation set) — same fadeTo()-based crossfade pattern as character.js.
+export async function loadAnimatedDecoration(url, targetHeight) {
+  const { model, height, animations } = await loadRaw(url);
+  const clone = model.clone(true);
+  clone.scale.setScalar(targetHeight / height);
+  const wrapper = new THREE.Group();
+  wrapper.add(clone);
+
+  const mixer = new THREE.AnimationMixer(clone);
+  const actions = {};
+  for (const clip of animations) {
+    const name = clip.name.split('|')[1] || clip.name;
+    actions[name] = mixer.clipAction(clip);
+  }
+
+  let current = null;
+  function fadeTo(name, { duration = 0.4, loop = true } = {}) {
+    const next = actions[name];
+    if (!next || next === current) return;
+    next.reset();
+    next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+    next.enabled = true;
+    next.play();
+    if (current) next.crossFadeFrom(current, duration, false);
+    else next.fadeIn(duration);
+    current = next;
+  }
+
+  return {
+    object3D: wrapper,
+    actions,
+    fadeTo,
+    update(dt) { mixer.update(dt); },
+  };
 }

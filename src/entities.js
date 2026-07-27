@@ -149,6 +149,64 @@ export function createPlanetGround(radius) {
   return sphere;
 }
 
+function makeMoonGroundTexture() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#8c8c8f';
+  ctx.fillRect(0, 0, size, size);
+
+  const patchColors = ['#7d7d80', '#96969a', '#75757a', '#a3a3a6'];
+  for (let i = 0; i < 300; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 4 + Math.random() * 14;
+    ctx.fillStyle = patchColors[i % patchColors.length];
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.7, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Craters: a soft dark bowl with a brighter rim, painted straight into the
+  // texture rather than modeled — much cheaper than displacing geometry.
+  for (let i = 0; i < 45; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 8 + Math.random() * 30;
+    const grad = ctx.createRadialGradient(x, y, r * 0.15, x, y, r);
+    grad.addColorStop(0, 'rgba(55,55,58,0.55)');
+    grad.addColorStop(0.7, 'rgba(60,60,63,0.32)');
+    grad.addColorStop(0.85, 'rgba(195,195,200,0.4)');
+    grad.addColorStop(1, 'rgba(140,140,143,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 3);
+  return texture;
+}
+
+// Same walkable-sphere convention as createPlanetGround, but gray cratered
+// regolith instead of green terrain, for the post-orbit moon level.
+export function createMoonGround(radius) {
+  const texture = makeMoonGroundTexture();
+  const mat = new THREE.MeshStandardMaterial({ map: texture, color: 0x9a9a9d, roughness: 1, metalness: 0 });
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 96), mat);
+  sphere.receiveShadow = true;
+  sphere.userData.radius = radius;
+  return sphere;
+}
+
 export function createFuelCell() {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({

@@ -60,7 +60,7 @@ function createThrustFlame() {
   return flame;
 }
 
-export async function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}) {
+export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrbitReached } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x02050f);
   scene.fog = new THREE.Fog(0x02050f, 60, 260);
@@ -239,9 +239,9 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart } = {}
       state = 'won';
       showOverlay(
         'Orbit Reached! \u{1F680}',
-        `Mission complete.\nFuel cells collected: ${player.cellsCollected} / ${TOTAL_FUEL_CELLS}\nFuel remaining: ${Math.round(player.fuel)}%`,
-        'Play Again',
-        () => { onRestart ? onRestart() : resetGame(startFuel); },
+        `Fuel cells collected: ${player.cellsCollected} / ${TOTAL_FUEL_CELLS}\nFuel remaining: ${Math.round(player.fuel)}%\n\nSetting a course for the moon.`,
+        'Continue',
+        () => { onOrbitReached ? onOrbitReached() : (onRestart ? onRestart() : resetGame(startFuel)); },
       );
     } else if (player.fuel <= 0 && player.y <= GROUND_Y + 0.05 && player.vy <= 0) {
       state = 'lost';
