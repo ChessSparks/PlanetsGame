@@ -1,0 +1,171 @@
+PLANETS GAME
+"A crash. A signal. A choice."
+
+============================================================
+OVERVIEW
+============================================================
+Planets Game is a third-person, story-driven 3D exploration game built
+in the browser with Three.js. You play a stranded pilot whose ship
+crash-lands on a remote world. Guided by Corthana, your ship's onboard
+AI, you repair your ship, escape the planet, and follow a trail of
+clues across a moon and a client's homeworld — only to discover the
+true purpose of the cargo you've been hired to deliver, and to make a
+final choice about whether to go through with it.
+
+The game is played entirely on the surface of small spherical planets
+(walking all the way around them, gravity always pointing "down"
+toward the core), interspersed with an on-rails rocket-ascent flying
+sequence, cinematic ship travel/cutscenes between worlds, and four
+distinct hand-built logic puzzles that gate story progress.
+
+============================================================
+STORY
+============================================================
+Your ship crashes on a quiet, empty planet under a trinary sun. There's
+no sign of life anywhere — no animals, no people, nothing except
+untouched plant life. Corthana, still online after the crash, helps you
+repair the ship, and together you discover that "quiet" was not always
+this planet's natural state.
+
+Once repaired and refueled, you launch, reach orbit, and set a course
+for the Moon — a waypoint where an ancient console reveals the location
+of valuable crystal deposits. Corthana is uneasy about what they might
+be for.
+
+From there you travel to the Client's Homeworld: a hostile, industrial
+world dominated by a single spire, guarded by patrol sentries. You
+track down a map beacon, cross the planet, and finally reach the spire
+— where the client reveals, without hesitation or shame, exactly what
+the crystals power: a weapon capable of silently wiping out every
+non-plant life-sign in a system, from orbit, with no warning. It's the
+same fate that already befell the first planet you crash-landed on.
+
+The game then puts the choice in your hands:
+  - Hand over the crystals — get paid, escape cleanly, and live with
+    what you enabled.
+  - Refuse — fight your way to the ship past newly-hostile sentries,
+    escape empty-handed, and live with yourself instead.
+
+Either choice leads to its own ending narrated by Corthana.
+
+============================================================
+STRUCTURE / GAME FLOW
+============================================================
+1. GROUND (Home Planet) — crash-landing, repair & fuel puzzle
+2. ASCENT — rocket launch minigame, climbing to orbit
+3. TRAVEL CUTSCENE — cinematic transition to the Moon
+4. MOON — exploration, star chart puzzle, crystal collection
+5. TRAVEL CUTSCENE — cinematic transition to the Client's Homeworld
+6. CLIENT WORLD — the game's largest level: trek to the spire, the
+   reveal, the moral choice, and the escape
+7. TRAVEL CUTSCENE (return) — leads back to a fresh Ground phase
+
+Progress autosaves at each phase, so players can leave and resume
+(a "Continue" option appears on the title screen) instead of always
+replaying from the crash.
+
+============================================================
+PHASE-BY-PHASE GAMEPLAY
+============================================================
+
+--- GROUND (Home Planet) ---
+An in-engine crash cutscene opens the game: your ship tumbles in from
+altitude on a banking arc and smashes into the surface. Once you regain
+control, you explore a small spherical planet (walk fully around it —
+gravity always points to the core) filled with forests, meadows,
+houses, a volcano, wildlife, drifting clouds, and a distant view of
+your home planet in the sky.
+
+Objectives:
+ - Find the "key finder" device.
+ - Use it to locate 3 hidden ship parts scattered across the planet.
+   Two are guarded by patrol drones that give chase (and kill on
+   contact) if you wander too close — outrunning them is always
+   possible, but getting caught resets your current run.
+ - Return to the ship and repair it.
+ - Find a nearby smaller volcano and solve a sliding-puzzle minigame
+   to secure a fuel cell.
+ - Interact with the repaired, fueled ship to launch.
+
+Controls: W/↑ walk, S/↓ back up, A/D turn, Shift run, Space jump,
+E interact.
+
+--- ASCENT (Rocket Launch) ---
+A vertical side-scrolling flight sequence. After a scripted liftoff,
+you pilot the rocket up through the atmosphere and into orbit,
+thrusting to fight gravity, strafing left/right to dodge birds and
+patrol drones, and collecting floating fuel cells along the way.
+Fuel drains while thrusting and refills from pickups; getting hit costs
+fuel and grants brief invulnerability. Difficulty (obstacle speed and
+density) ramps continuously all the way to orbit rather than easing off
+near the top. Reaching orbit altitude wins the level; running out of
+fuel before then ends it in failure and restarts the climb.
+
+--- TRAVEL CUTSCENE ---
+A short cinematic space-flight sequence bridges each planetary phase,
+with its own color palette and music theme per leg of the journey
+(Home Orbit → Moon → Client's Homeworld → New Assignment).
+
+--- MOON ---
+A lower-gravity spherical world (floatier jumps, "moon bounce" physics)
+scattered with rocks. After an in-engine landing cutscene (a controlled,
+braking descent — the opposite feel from the home planet's violent
+crash), you explore to find an ancient beacon/console. Solving its star
+chart puzzle reveals the locations of 5 hidden crystal deposits, which
+only then appear in the world to be collected. Once all crystals are
+gathered, returning to the ship departs for the Client's Homeworld.
+The home planet is visible, huge, in the moon's sky — a visual payoff
+for the ground-to-orbit arc.
+
+--- CLIENT WORLD ---
+The biggest level in the game. A hostile, industrial planet: a long
+walk from the landing site, through generated building districts and
+scattered ruins, to a distant spire — all while patrol sentries circle
+overhead (initially non-hostile).
+
+Objectives:
+ - Find a map beacon and solve a circuit puzzle to reveal the spire's
+   location.
+ - Trek to the spire and interact with it, triggering the story's
+   central reveal and dialogue sequence.
+ - Make the choice: hand over the crystals, or refuse.
+ - Either choice sets the sentries hostile and hunting.
+ - Find the control tower and solve a cipher puzzle to disable the
+   sentries.
+ - Return to the ship to trigger the ending sequence matching your
+   choice.
+
+============================================================
+PUZZLES (MINIGAMES)
+============================================================
+Four distinct hand-built puzzle types gate major story beats:
+ 1. Sliding Puzzle — secures the fuel cell on the home planet.
+ 2. Star Chart Puzzle — reveals the moon's crystal deposit locations.
+ 3. Circuit Puzzle — reveals the client world's spire location.
+ 4. Cipher Puzzle — disables the hostile sentries at the control tower.
+
+============================================================
+CHARACTERS
+============================================================
+ - The Player — a stranded pilot/courier, silent protagonist.
+ - Corthana — your ship's onboard AI, a constant companion voice
+   throughout: helps diagnose the crash, reacts to discoveries, grows
+   suspicious of the crystal cargo, and ultimately reflects on whatever
+   choice you make at the end.
+ - The Client — heard only as a voice from within the spire; reveals
+   the true purpose of the crystals without remorse.
+
+============================================================
+TECH / PRESENTATION NOTES
+============================================================
+ - Built with Three.js (WebGL) and Vite.
+ - Every planet is a walkable sphere with its own gravity, terrain,
+   decorations, and hazards.
+ - Minimap, HUD (fuel/altitude bars, collectible counters), dynamic
+   objective banners, toast notifications, and text-to-speech narration
+   for Corthana's lines.
+ - Dev menu (hamburger icon) allows jumping directly to any phase for
+   testing.
+ - Settings menu accessible via Escape/gear icon, pausing gameplay.
+ - Each scene/level is code-split and lazy-loaded so players never
+   download content for levels they haven't reached yet.
