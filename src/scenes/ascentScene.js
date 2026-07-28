@@ -7,8 +7,9 @@ import { loadDecoration } from '../game/models.js';
 import { loadDroneTemplate, cloneDrone } from '../game/droneModel.js';
 import { keys, consumeInteractPress } from '../game/input.js';
 import {
-  setBarLabels, setTopBar, setBottomBar, setCellsCount, showOverlay, flashToast,
+  setBarLabels, setTopBar, setBottomBar, setCellsCount, showOverlay, flashToast, announceObjective,
 } from '../game/hud.js';
+import { speak } from '../game/voice.js';
 import {
   playMusicTheme, playAmbience, playIgnitionSting, playOrbitSting,
 } from '../game/audio.js';
@@ -45,6 +46,11 @@ const FUEL_CELL_GIVE = 16;
 const HIT_PENALTY = 25;
 const INVULN_TIME = 1.2;
 
+// Density/danger ramps UP toward orbit instead of thinning out — the old
+// layout's last third was just slow-moving satellites, which made the
+// final stretch to orbit the easiest part of the level instead of the
+// climax. Drones now persist (and get denser) all the way to the top,
+// woven in around the satellites rather than replaced by them.
 const LEVEL_LAYOUT = [
   { type: 'fuel', x: 2, y: 8 }, { type: 'fuel', x: -3, y: 14 },
   { type: 'bird', x: -4, y: 12 }, { type: 'bird', x: 5, y: 18 },
@@ -56,9 +62,14 @@ const LEVEL_LAYOUT = [
   { type: 'drone', x: 0, y: 64 }, { type: 'drone', x: 5, y: 72 },
   { type: 'fuel', x: 2, y: 74 }, { type: 'drone', x: -3, y: 80 },
   { type: 'satellite', x: -3, y: 90 }, { type: 'fuel', x: -2, y: 88 },
+  { type: 'drone', x: 3, y: 94 }, { type: 'drone', x: -5, y: 97 },
   { type: 'satellite', x: 4, y: 100 }, { type: 'fuel', x: 3, y: 102 },
+  { type: 'drone', x: -2, y: 106 }, { type: 'bird', x: 5, y: 109 },
   { type: 'satellite', x: 0, y: 112 }, { type: 'fuel', x: -3, y: 116 },
+  { type: 'drone', x: 4, y: 117 }, { type: 'drone', x: -4, y: 119 },
   { type: 'satellite', x: -4, y: 122 }, { type: 'fuel', x: 0, y: 128 },
+  { type: 'drone', x: 2, y: 124 }, { type: 'drone', x: -3, y: 132 },
+  { type: 'fuel', x: 0, y: 136 },
 ];
 const TOTAL_FUEL_CELLS = LEVEL_LAYOUT.filter((e) => e.type === 'fuel').length;
 
@@ -77,6 +88,15 @@ function createThrustFlame() {
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
 }
+
+// Sky/fog fixed at "dark space" the whole climb, even right off the pad,
+// gave zero visual sense of actually leaving atmosphere — SPACE_COLOR is
+// the scene's original fixed color, ATMOSPHERE_COLOR is a bright daytime
+// sky for low altitude, and updateSky() below blends between them (plus
+// widens the fog range as the "air" thins out) based on player.y.
+const ATMOSPHERE_COLOR = new THREE.Color(0x6bb7e8);
+const ATMOSPHERE_FOG_COLOR = new THREE.Color(0x8fd0ff);
+const SPACE_COLOR = new THREE.Color(0x02050f);
 
 export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrbitReached } = {}) {
   playMusicTheme('ascent');
@@ -148,12 +168,32 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
 
   let state = 'liftoff';
   let liftoffElapsed = 0;
+  let atmosphereBeatFired = false;
   flashToast('Liftoff! (Press E to skip)', LIFTOFF_DURATION * 1000);
   playIgnitionSting();
+
+  const skyColor = new THREE.Color();
+  const fogColor = new THREE.Color();
+  function updateSky() {
+    const t = THREE.MathUtils.clamp(player.y / ORBIT_ALTITUDE, 0, 1);
+    const eased = t * t; // lingers in "still atmosphere" a bit before clearing fast near the top
+    skyColor.copy(ATMOSPHERE_COLOR).lerp(SPACE_COLOR, eased);
+    scene.background.copy(skyColor);
+    fogColor.copy(ATMOSPHERE_FOG_COLOR).lerp(SPACE_COLOR, eased);
+    scene.fog.color.copy(fogColor);
+    scene.fog.far = THREE.MathUtils.lerp(90, 260, eased); // hazy near the pad, clear once the air's thinned out
+
+    if (!atmosphereBeatFired && t > 0.5) {
+      atmosphereBeatFired = true;
+      announceObjective('Breaking atmosphere — hold steady.');
+      speak('Breaking atmosphere. Hold steady.');
+    }
+  }
 
   function resetGame(newStartFuel) {
     player.x = 0; player.y = GROUND_Y; player.vx = 0; player.vy = 0;
     player.fuel = newStartFuel ?? FUEL_MAX; player.cellsCollected = 0; player.invulnTimer = 0;
+    atmosphereBeatFired = false;
     rocket.position.set(0, GROUND_Y, 0);
     rocket.rotation.set(0, 0, 0);
     buildLevel();
@@ -208,15 +248,20 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
     for (const ent of activeEntities) {
       if (!ent.alive) continue;
       const { mesh, def, baseX, baseY } = ent;
+      // A real difficulty ramp, not just more obstacles higher up — birds
+      // and drones sweep faster and wider the closer they are to orbit, so
+      // the same obstacle type gets harder to read/dodge as you climb
+      // instead of staying identical the whole level.
+      const altitudeRamp = 1 + (baseY / ORBIT_ALTITUDE) * 0.7;
 
       if (def.type === 'bird') {
-        mesh.position.x = baseX + Math.sin(elapsed * 3 + baseY) * 1.4;
+        mesh.position.x = baseX + Math.sin(elapsed * 3 * altitudeRamp + baseY) * 1.4 * altitudeRamp;
         mesh.position.y = baseY + Math.sin(elapsed * 6 + baseY) * 0.3;
         const flap = Math.sin(elapsed * 14 + baseY);
         mesh.userData.wingL.rotation.z = flap * 0.6;
         mesh.userData.wingR.rotation.z = -flap * 0.6;
       } else if (def.type === 'drone') {
-        mesh.position.x = baseX + Math.sin(elapsed * 1.1 + baseY) * 2.2;
+        mesh.position.x = baseX + Math.sin(elapsed * 1.1 * altitudeRamp + baseY) * 2.2 * altitudeRamp;
         mesh.userData.blinkLight.visible = Math.floor(elapsed * 4) % 2 === 0;
       } else if (def.type === 'satellite') {
         mesh.position.x = baseX + Math.sin(elapsed * 0.4 + baseY) * 1.0;
@@ -334,6 +379,7 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
     update(dt, elapsed, camera) {
       if (state === 'liftoff') {
         updateLiftoff(dt, elapsed, camera);
+        updateSky();
         return;
       }
       if (state === 'playing') {
@@ -342,6 +388,7 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
         updateHUD();
         checkEndConditions();
       }
+      updateSky();
       updateCamera(dt, camera);
     },
   };

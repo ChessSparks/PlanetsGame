@@ -197,7 +197,14 @@ const FOREST = [
 ];
 const FOREST_COUNT = 220;
 
-const HOUSE_BLOCK_RADIUS = 3.2;
+// Measured house.glb's real world-space footprint (via node-matrix bbox) at
+// its raw scale: height 2.926, long axis (X) half-extent 1.822. placeHouses
+// scales that to each instance's actual spawn height rather than using one
+// fixed radius for every house, since the two spawn heights (6.0 and 6.6)
+// differ enough that a single worst-case radius stuck out well past the
+// walls of the shorter houses.
+const HOUSE_RAW_HEIGHT = 2.9260295996164567;
+const HOUSE_RAW_HALF_LONG_AXIS = 1.8218017183244228;
 const VOLCANO_BLOCK_RADIUS = 4.5;
 const SMALL_VOLCANO_BLOCK_RADIUS = 1.8;
 const SHIP_BLOCK_RADIUS = 3.0;
@@ -1171,11 +1178,13 @@ async function placeShip(scene, obstacles) {
 async function placeHouses(scene, obstacles) {
   await Promise.all(HOUSE_SPOTS.map(async (spot, i) => {
     try {
-      const house = await loadDecoration('/assets/house.glb', 6.0 + (i % 2) * 0.6);
+      const houseHeight = 6.0 + (i % 2) * 0.6;
+      const house = await loadDecoration('/assets/house.glb', houseHeight);
       placeOnSurface(house, spot.normal, EMBED.house);
       orientToNormal(house, spot.normal, i * 0.7);
       scene.add(house);
-      obstacles.push({ normal: spot.normal.clone(), radius: HOUSE_BLOCK_RADIUS });
+      const radius = HOUSE_RAW_HALF_LONG_AXIS * (houseHeight / HOUSE_RAW_HEIGHT);
+      obstacles.push({ normal: spot.normal.clone(), radius });
     } catch (err) {
       console.error('Failed to place house:', err);
     }
