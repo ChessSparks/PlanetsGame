@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  createMoonGround, createStarfield, createEarth, createFuelCell,
+  createMoonGround, createStarfield, createFuelCell,
 } from '../entities.js';
 import { loadAstronaut } from '../game/character.js';
 import { loadDecoration } from '../game/models.js';
@@ -227,9 +227,36 @@ export async function createMoonScene({ onComplete } = {}) {
 
   // Home planet — the same distant point glimpsed from the crash site,
   // now huge and close: the payoff for the whole ground-then-orbit arc.
-  const home = createEarth(30);
+  // The real model instead of the procedural placeholder sphere.
+  const home = await loadDecoration('/assets/earth.glb', 90);
   home.position.set(130, 55, -90);
+  // loadDecoration's convention is feet-at-origin (built for characters/
+  // props standing on the ground) — recentered here so home.position is
+  // the sphere's true visual center, not its underside.
+  home.children[0].position.y = -45;
+  // Picks which longitude faces the moon at rest — no way for me to see
+  // which side that lands on without rendering it, so this is a starting
+  // guess (a half-turn from the model's default facing) to bring more
+  // landmass into view; nudge this value if it's not the right side yet.
+  home.rotation.y = Math.PI;
   scene.add(home);
+
+  // The texture has no baked day/night side — it's a plain equirectangular
+  // map — so which hemisphere reads as "bright" is purely down to which way
+  // light hits it, and rotating the (perfectly round) mesh can't change
+  // that. The moon's own sun points a different direction than "moon
+  // surface toward Earth", which left the moon-facing hemisphere in shadow.
+  // Rather than touch the moon's actual sun (it also drives the terrain's
+  // shadows), Earth gets its own dedicated light aimed the right way: from
+  // the moon's general direction toward Earth, so the face actually visible
+  // from the ground is the lit one.
+  const homeLightTarget = new THREE.Object3D();
+  homeLightTarget.position.copy(home.position);
+  scene.add(homeLightTarget);
+  const homeLight = new THREE.DirectionalLight(0xfff4e0, 1.2);
+  homeLight.position.set(0, 0, 0);
+  homeLight.target = homeLightTarget;
+  scene.add(homeLight);
 
   const moon = createMoonGround(MOON_RADIUS);
   scene.add(moon);
