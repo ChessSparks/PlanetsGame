@@ -593,6 +593,8 @@ export function createControlTower() {
   group.add(beacon);
   group.userData.beacon = beacon;
 
-  group.userData.radius = 2.4;
+  // Matches CONTROL_TOWER_BLOCK_RADIUS in clientWorldScene.js — the real
+  // solid base is only a 2.6x2.2x2.6 box (half-width 1.3, diagonal ~1.8).
+  group.userData.radius = 1.6;
   return group;
 }

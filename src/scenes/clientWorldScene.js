@@ -102,7 +102,12 @@ const SPIRE_BLOCK_RADIUS = 5.2;
 const SPIRE_INTERACT_RADIUS = 7.5;
 const MAP_CONSOLE_BLOCK_RADIUS = 1.1;
 const MAP_CONSOLE_INTERACT_RADIUS = 2.8;
-const CONTROL_TOWER_BLOCK_RADIUS = 2.4;
+// The tower's actual solid base is only a 2.6x2.2x2.6 box (half-width 1.3,
+// diagonal ~1.8) — the mast/dish/beacon above it are thin and high up, not
+// part of the footprint. This used to be 2.4, well past the visible
+// structure, which blocked walking past it on sides that were visibly
+// clear ground.
+const CONTROL_TOWER_BLOCK_RADIUS = 1.6;
 const CONTROL_TOWER_INTERACT_RADIUS = 4.5;
 const EMBED = { ship: 0.5, rock: 0.15, spire: 0.4, console: 0.3, tower: 0.3, building: 0.4 };
 
