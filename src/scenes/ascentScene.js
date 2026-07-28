@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import {
   createEarth, createStarfield, createFuelCell,
-  createBird, createDrone, createSatellite, createOrbitRing,
+  createBird, createSatellite, createOrbitRing,
 } from '../entities.js';
 import { loadDecoration } from '../game/models.js';
+import { loadDroneTemplate, cloneDrone } from '../game/droneModel.js';
 import { keys, consumeInteractPress } from '../game/input.js';
 import {
   setBarLabels, setTopBar, setBottomBar, setCellsCount, showOverlay, flashToast,
@@ -123,6 +124,11 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
     fuel: startFuel, cellsCollected: 0, invulnTimer: 0,
   };
 
+  // Loaded once up front (buildLevel() below reruns synchronously on every
+  // retry via resetGame(), so it can't itself await a network fetch) —
+  // cloneDrone() is plain THREE.Object3D.clone(), safe to call from there.
+  const droneTemplate = await loadDroneTemplate();
+
   const activeEntities = [];
   function buildLevel() {
     for (const e of activeEntities) scene.remove(e.mesh);
@@ -131,7 +137,7 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
       let mesh;
       if (def.type === 'fuel') mesh = createFuelCell();
       else if (def.type === 'bird') mesh = createBird();
-      else if (def.type === 'drone') mesh = createDrone();
+      else if (def.type === 'drone') mesh = cloneDrone(droneTemplate);
       else if (def.type === 'satellite') mesh = createSatellite();
       mesh.position.set(def.x, def.y, 0);
       scene.add(mesh);
@@ -211,7 +217,6 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
         mesh.userData.wingR.rotation.z = -flap * 0.6;
       } else if (def.type === 'drone') {
         mesh.position.x = baseX + Math.sin(elapsed * 1.1 + baseY) * 2.2;
-        for (const r of mesh.userData.rotors) r.rotation.y += dt * 30;
         mesh.userData.blinkLight.visible = Math.floor(elapsed * 4) % 2 === 0;
       } else if (def.type === 'satellite') {
         mesh.position.x = baseX + Math.sin(elapsed * 0.4 + baseY) * 1.0;

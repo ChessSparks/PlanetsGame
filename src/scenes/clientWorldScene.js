@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import {
-  createForgeGround, createStarfield, createSentry, createSpire, createSun,
+  createForgeGround, createStarfield, createSpire, createSun,
   createIndustrialBuilding, createStreetPad, createControlTower,
 } from '../entities.js';
 import { loadAstronaut } from '../game/character.js';
 import { loadDecoration } from '../game/models.js';
+import { loadSentryTemplate, cloneDrone } from '../game/droneModel.js';
 import { createPlanetWalker, fibonacciSphere, orientToNormal } from '../game/planet.js';
 import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
 import {
@@ -104,8 +105,6 @@ const MAP_CONSOLE_INTERACT_RADIUS = 2.8;
 const CONTROL_TOWER_BLOCK_RADIUS = 2.4;
 const CONTROL_TOWER_INTERACT_RADIUS = 4.5;
 const EMBED = { ship: 0.5, rock: 0.15, spire: 0.4, console: 0.3, tower: 0.3, building: 0.4 };
-
-const HANDOVER_DURATION = 3.6;
 
 const SENTRY_HAZARD_RADIUS = 1.4;
 const SENTRY_AGGRO_RADIUS = 10;
@@ -323,8 +322,11 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   scene.add(controlTower);
   obstacles.push({ normal: CONTROL_TOWER_SPOT.normal.clone(), radius: CONTROL_TOWER_BLOCK_RADIUS });
 
+  // Loaded once, then cloned synchronously per patrol spot — cloneDrone()
+  // is plain THREE.Object3D.clone(), no network fetch involved.
+  const sentryTemplate = await loadSentryTemplate();
   const sentries = SENTRY_PATROLS.map((patrol) => {
-    const mesh = createSentry();
+    const mesh = cloneDrone(sentryTemplate);
     scene.add(mesh);
     return { ...patrol, mesh, ...tangentBasis(patrol.center), mode: 'patrol', chaseTime: 0 };
   });
@@ -344,8 +346,6 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   let sentriesDisabled = false;
   let respawnGraceTimer = 0; // blocks new patrol->chase aggro for a moment after a respawn
   let lastElapsed = 0; // captured each frame so resetRun() can relocate sentries outside the normal update tick
-  let handoverElapsed = 0;
-  let handoverDone = false;
 
   function announce(text) {
     announceObjective(text);
@@ -505,11 +505,11 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     next();
   }
 
-  // Stays out of 'playing' through both the handover cutscene and its
-  // result screen — otherwise a player who interacts with the ship in the
-  // split second before clicking Continue could reach handleShipInteract()
-  // (already unlocked by choiceMade) before activateSentries() ever runs
-  // below, skipping the sentries/control-tower act entirely.
+  // Stays out of 'playing' through both cutscenes and their result screens —
+  // otherwise a player who interacts with the ship in the split second
+  // before clicking Continue could reach handleShipInteract() (already
+  // unlocked by choiceMade) before activateSentries() ever runs below,
+  // skipping the sentries/control-tower act entirely.
   function showChoiceResultScreen(handedOver) {
     const screen = handedOver
       ? {
@@ -527,53 +527,10 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     });
   }
 
-  // A close cinematic beat for the astronaut actually presenting the case —
-  // only for the "hand over" branch; refusing skips straight to its result
-  // screen since there's nothing to physically show for it. The client is
-  // deliberately never a visible character (just "a voice out of the
-  // static"), so the spire's own core flaring up as it "receives" the
-  // delivery stands in for a reaction shot.
-  function finishHandoverCutscene() {
-    astronaut.fadeTo('Idle', { duration: 0.2 });
-    showChoiceResultScreen(true);
-  }
-
-  function updateHandoverCutscene(dt, elapsed, camera) {
-    if (consumeInteractPress()) handoverElapsed = HANDOVER_DURATION;
-    else handoverElapsed += dt;
-    const t = Math.min(1, handoverElapsed / HANDOVER_DURATION);
-
-    const playerPos = walker.getPosition(PLANET_RADIUS);
-    camera.position.copy(playerPos)
-      .addScaledVector(walker.forward, 2.2)
-      .addScaledVector(walker.normal, 1.6);
-    camera.up.copy(walker.normal);
-    camera.lookAt(playerPos.clone().addScaledVector(walker.normal, 1.2));
-
-    // A dramatic swell (0 -> 1 -> 0) on the spire's core, well above its
-    // normal idle pulse, timed with the astronaut's presenting gesture.
-    const flare = Math.sin(t * Math.PI);
-    spire.userData.core.material.emissiveIntensity = 1.6 + flare * 3;
-    spire.userData.core.scale.setScalar(1 + flare * 0.6);
-
-    if (t >= 1 && !handoverDone) {
-      handoverDone = true;
-      finishHandoverCutscene();
-    }
-  }
-
   function resolveChoice(handedOver) {
     delivered = handedOver;
     choiceMade = true;
-    if (!handedOver) {
-      showChoiceResultScreen(false);
-      return;
-    }
-    state = 'handover';
-    handoverElapsed = 0;
-    handoverDone = false;
-    astronaut.fadeTo('Interact', { duration: 0.15, loop: false });
-    flashToast('Press E to skip', HANDOVER_DURATION * 1000);
+    showChoiceResultScreen(handedOver);
   }
 
   function resolveEnding() {
@@ -608,7 +565,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     let i = 0;
     function next() {
       if (i >= screens.length) {
-        showOverlay(finalScreen.title, finalScreen.body, 'Play Again', () => onFinish?.());
+        showOverlay(finalScreen.title, finalScreen.body, 'Depart', () => onFinish?.());
         return;
       }
       const s = screens[i++];
@@ -731,8 +688,14 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
         stepAvoidingObstacles(sentry.mesh.position, sentryOrbitTarget, SENTRY_PATROL_CATCH_SPEED * dt, obstacles, SENTRY_BODY_RADIUS);
       }
 
+      // Local "up" tracks the sentry's own position on the sphere (its
+      // surface normal, since it hovers close to the ground) rather than
+      // world +Y — otherwise the antennas would only read as "up" near the
+      // planet's north pole. lookAt() reads this.up each call.
+      sentry.mesh.up.copy(sentry.mesh.position).normalize();
+      sentry.mesh.lookAt(playerPos);
+
       const chasing = sentry.mode === 'chase';
-      for (const r of sentry.mesh.userData.rotors) r.rotation.y += dt * (chasing ? 50 : 30);
       sentry.mesh.userData.blinkLight.visible = Math.floor(elapsed * (chasing ? 8 : 4)) % 2 === 0;
     }
   }
@@ -788,15 +751,6 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     update(dt, elapsed, camera) {
       lastElapsed = elapsed;
       if (respawnGraceTimer > 0) respawnGraceTimer -= dt;
-
-      if (state === 'handover') {
-        updateHandoverCutscene(dt, elapsed, camera);
-        astronaut.update(dt);
-        updateShadowLight();
-        spire.userData.core.rotation.y += dt * 0.4;
-        updateMinimap();
-        return;
-      }
 
       if (state === 'playing') {
         updateMovement(dt);

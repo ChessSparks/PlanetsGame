@@ -334,76 +334,10 @@ export function createBird() {
   return group;
 }
 
-export function createDrone() {
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x555a66, metalness: 0.6, roughness: 0.35 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.3, 1.1), bodyMat);
-  group.add(body);
-
-  const armMat = new THREE.MeshStandardMaterial({ color: 0x33363f, metalness: 0.5, roughness: 0.4 });
-  const rotorPositions = [[0.8, 0, 0.8], [-0.8, 0, 0.8], [0.8, 0, -0.8], [-0.8, 0, -0.8]];
-  const rotors = [];
-  for (const [x, y, z] of rotorPositions) {
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.9, 6), armMat);
-    arm.position.set(x * 0.55, 0.05, z * 0.55);
-    arm.rotation.x = Math.PI / 2;
-    arm.rotation.z = Math.atan2(x, z);
-    group.add(arm);
-
-    const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.05, 10), armMat);
-    rotor.position.set(x, 0.1, z);
-    group.add(rotor);
-    rotors.push(rotor);
-  }
-  group.userData.rotors = rotors;
-
-  const lightMat = new THREE.MeshBasicMaterial({ color: 0xff2222 });
-  const light = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), lightMat);
-  light.position.set(0, -0.2, 0);
-  group.add(light);
-  group.userData.blinkLight = light;
-
-  group.userData.radius = 1.1;
-  group.userData.type = 'drone';
-  return group;
-}
-
-// A hostile reskin of createDrone — same rig (proven working chase/patrol
-// code can drive either one), darker gunmetal-and-red instead of gray, for
-// the client's security sentries on level 4.
-export function createSentry() {
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x22181a, metalness: 0.7, roughness: 0.3 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.32, 1.2), bodyMat);
-  group.add(body);
-
-  const armMat = new THREE.MeshStandardMaterial({ color: 0x2c1416, metalness: 0.6, roughness: 0.35 });
-  const rotorPositions = [[0.85, 0, 0.85], [-0.85, 0, 0.85], [0.85, 0, -0.85], [-0.85, 0, -0.85]];
-  const rotors = [];
-  for (const [x, y, z] of rotorPositions) {
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.95, 6), armMat);
-    arm.position.set(x * 0.55, 0.05, z * 0.55);
-    arm.rotation.x = Math.PI / 2;
-    arm.rotation.z = Math.atan2(x, z);
-    group.add(arm);
-
-    const rotor = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.05, 10), armMat);
-    rotor.position.set(x, 0.1, z);
-    group.add(rotor);
-    rotors.push(rotor);
-  }
-  group.userData.rotors = rotors;
-
-  const lightMat = new THREE.MeshBasicMaterial({ color: 0xff3322 });
-  const light = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), lightMat);
-  light.position.set(0, -0.2, 0);
-  group.add(light);
-  group.userData.blinkLight = light;
-
-  group.userData.radius = 1.2;
-  group.userData.type = 'sentry';
-  return group;
-}
+// createDrone/createSentry (hostile drones/sentries) moved to
+// game/droneModel.js — they now load the real drone.glb model instead of
+// building a procedural quad-rotor mesh, which requires async loading that
+// doesn't fit this file's synchronous creator-function convention.
 
 export function createSatellite() {
   const group = new THREE.Group();

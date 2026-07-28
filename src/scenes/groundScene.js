@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import {
-  createPlanetGround, createDrone, createOrbitRing, createSun,
+  createPlanetGround, createOrbitRing, createSun,
 } from '../entities.js';
 import { loadAstronaut } from '../game/character.js';
 import { loadDecoration, loadAnimatedDecoration } from '../game/models.js';
+import { loadDroneTemplate, cloneDrone } from '../game/droneModel.js';
 import { createPlanetWalker, fibonacciSphere, orientToNormal } from '../game/planet.js';
 import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
 import {
@@ -58,9 +59,6 @@ const HOUSE_SPOTS = [
   { normal: sph(24, 192), clear: 0.28 },
 ];
 const VOLCANO_SPOT = { normal: sph(-35, 12), clear: 0.4 };
-// Checked against every other feature (nearest is MEADOW1, ~12.9 units away)
-// so the lake's water body plus its shoreline rocks have plenty of room.
-const LAKE_SPOT = { normal: sph(50, -70), clear: 0.35 };
 // A short walk from the main volcano — where the fuel puzzle lives, found
 // only after the ship is repaired.
 const SMALL_VOLCANO_SPOT = { normal: sph(-24, 30), clear: 0.15 };
@@ -106,6 +104,19 @@ const DRONE_PATROLS = [
 const KEY_PICKUP_RADIUS = 1.8;
 const FINDER_PICKUP_RADIUS = 1.2;
 const DRONE_HAZARD_RADIUS = 1.4;
+const DRONE_BODY_RADIUS = 0.7;
+// A straight 3D step toward a target that's also on the sphere's surface
+// always cuts slightly inside the true curved arc between them (a chord vs.
+// an arc) — over many frames of chasing/patrolling this drift accumulates
+// and a drone's actual distance from the planet slowly decays toward the
+// center ("sinking into the ground"). This is the hard floor that undoes
+// that drift every frame regardless of what steering produced it.
+// drone.mesh.position is the drone's CENTER (droneModel.js recenters the
+// loaded model onto its own origin), and the model is 1.4 units tall — so
+// the floor has to clear half that height (0.7) plus real margin, not just
+// be "some small number above 0", or the drone's underside still clips
+// into the ground even while its center reads as "above the floor."
+const MIN_DRONE_ALTITUDE = 1.3;
 // Patrol orbit keeps a drone's distance from the player's max walking height
 // (sqrt((PLANET_RADIUS+altitude)^2 + orbitRadius^2) - PLANET_RADIUS) always
 // well above PLAYER_COLLISION_RADIUS + DRONE_HAZARD_RADIUS, so contact only
@@ -133,14 +144,10 @@ const CLEAR_ZONES = [
   KEY_FINDER_SPOT,
   VOLCANO_SPOT,
   SMALL_VOLCANO_SPOT,
-  LAKE_SPOT,
   ...HOUSE_SPOTS,
   ...KEY_SPOTS,
   ...WILDLIFE_SPOTS.map((w) => ({ normal: w.normal, clear: 0.11 })),
 ];
-
-const LAKE_RADIUS = 4.2;
-const LAKE_SHORE_ROCK_COUNT = 8;
 
 // Where a drone would be right now if it were purely following its patrol
 // orbit, regardless of its current actual position (used both for normal
@@ -196,8 +203,13 @@ const SMALL_VOLCANO_BLOCK_RADIUS = 1.8;
 const SHIP_BLOCK_RADIUS = 3.0;
 const PLAYER_COLLISION_RADIUS = 0.45;
 
-const CLOUD_COUNT = 16;
+const CLOUD_COUNT = 46;
 const CLOUD_ALTITUDE = 8;
+// A second, sparser, higher wispy layer drifting at its own rate reads as
+// real depth/parallax in the sky instead of one flat shell of puffs all
+// moving together as a single rigid body.
+const CLOUD_HIGH_COUNT = 20;
+const CLOUD_HIGH_ALTITUDE = 15;
 
 const SATELLITE_ORBIT_RADIUS = PLANET_RADIUS + 9;
 const SATELLITE_ORBIT_AXIS = new THREE.Vector3(0.25, 1, 0.12).normalize();
@@ -218,33 +230,8 @@ const SUNS = [
 // everything looking like it hovered just above the surface. Sinking each
 // category in slightly by its own depth hides that gap.
 const EMBED = {
-  forest: 0.35, house: 0.95, volcano: 1.4, smallVolcano: 0.55, wildlife: 0.25, ship: 0.5, lake: 0.5, lakeRock: 0.15,
+  forest: 0.35, house: 0.95, volcano: 1.4, smallVolcano: 0.55, wildlife: 0.25, ship: 0.5,
 };
-
-// A still, reflective water disc — no lake asset exists, so this is built
-// procedurally like everything else non-model in the game (starfields,
-// smoke, suns). A slightly-raised, softly glowing "glint" disc sits just
-// above the water and pulses gently, standing in for sunlight shimmer
-// without needing an actual animated water shader.
-function createLakeWater(radius) {
-  const group = new THREE.Group();
-
-  const waterMat = new THREE.MeshStandardMaterial({
-    color: 0x1c4f66, emissive: 0x0a2a38, emissiveIntensity: 0.4, roughness: 0.12, metalness: 0.35,
-  });
-  const water = new THREE.Mesh(new THREE.CircleGeometry(radius, 48), waterMat);
-  group.add(water);
-
-  const glintMat = new THREE.MeshBasicMaterial({
-    color: 0xbfe8ff, transparent: true, opacity: 0.22, depthWrite: false,
-  });
-  const glint = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.55, 32), glintMat);
-  glint.position.z = 0.01;
-  group.add(glint);
-  group.userData.glint = glint;
-
-  return group;
-}
 
 function placeOnSurface(object, normal, embed) {
   object.position.copy(normal).multiplyScalar(PLANET_RADIUS - embed);
@@ -316,7 +303,6 @@ export async function createGroundScene({ onLaunch } = {}) {
   const obstacles = []; // { normal, radius } — filled in as blocking decorations load
   const windSwayables = []; // { mesh, baseQuat, amplitude, speed, phase } — foliage that sways in the wind
   const wildlifeAnimals = []; // { animal, idleTimer } — deer/stag, animated once loaded
-  const waterFeatures = []; // { glint, phase } — lake glint sprites, pulsed each frame
   let jumpVelocity = 0;
   let jumpHeight = 0;
 
@@ -326,6 +312,9 @@ export async function createGroundScene({ onLaunch } = {}) {
 
   const cloudLayer = createCloudLayer();
   scene.add(cloudLayer);
+
+  const highCloudLayer = createHighCloudLayer();
+  scene.add(highCloudLayer);
 
   const satellite = new THREE.Group();
   scene.add(satellite);
@@ -363,7 +352,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   // The rest of the decorations load and populate in the background so a
   // single bad model (network hiccup, bad asset) can't ever block the planet
   // itself from rendering — each piece is independently fault-tolerant.
-  populatePlanet(scene, satellite, earth, obstacles, windSwayables, wildlifeAnimals, waterFeatures);
+  populatePlanet(scene, satellite, earth, obstacles, windSwayables, wildlifeAnimals);
 
   // Keys stay off-scene until the key finder is picked up — spawnKeys() adds
   // them in. resetRun() below re-hides everything after a death.
@@ -400,8 +389,11 @@ export async function createGroundScene({ onLaunch } = {}) {
   fuelBeacon.material.opacity = 0;
   scene.add(fuelBeacon);
 
+  // Loaded once, then cloned synchronously per patrol spot — cloneDrone()
+  // is plain THREE.Object3D.clone(), no network fetch involved.
+  const droneTemplate = await loadDroneTemplate();
   const drones = DRONE_PATROLS.map((patrol) => {
-    const mesh = createDrone();
+    const mesh = cloneDrone(droneTemplate);
     scene.add(mesh);
     return { ...patrol, mesh, ...tangentBasis(patrol.center), mode: 'patrol', chaseTime: 0, disabled: false };
   });
@@ -807,8 +799,11 @@ export async function createGroundScene({ onLaunch } = {}) {
     for (const drone of drones) {
       if (drone.disabled) {
         orbitPosition(drone, elapsed, droneOrbitTarget);
-        moveToward(drone.mesh.position, droneOrbitTarget, DRONE_PATROL_CATCH_SPEED * dt);
-        for (const r of drone.mesh.userData.rotors) r.rotation.y += dt * 30;
+        stepAvoidingObstacles(drone.mesh.position, droneOrbitTarget, DRONE_PATROL_CATCH_SPEED * dt, obstacles, DRONE_BODY_RADIUS);
+        clampDroneAltitude(drone.mesh);
+        // Deactivated — a slow aimless tumble around its own axis instead of
+        // tracking the player, reading as "powered down and drifting."
+        drone.mesh.rotation.y += dt * 1.2;
         drone.mesh.userData.blinkLight.visible = false;
         continue;
       }
@@ -829,14 +824,21 @@ export async function createGroundScene({ onLaunch } = {}) {
       if (drone.mode === 'chase') {
         drone.chaseTime += dt;
         droneChaseTarget.copy(playerNormal).multiplyScalar(PLANET_RADIUS + DRONE_CHASE_ALTITUDE);
-        moveToward(drone.mesh.position, droneChaseTarget, DRONE_CHASE_SPEED * dt);
+        stepAvoidingObstacles(drone.mesh.position, droneChaseTarget, DRONE_CHASE_SPEED * dt, obstacles, DRONE_BODY_RADIUS);
       } else {
         orbitPosition(drone, elapsed, droneOrbitTarget);
-        moveToward(drone.mesh.position, droneOrbitTarget, DRONE_PATROL_CATCH_SPEED * dt);
+        stepAvoidingObstacles(drone.mesh.position, droneOrbitTarget, DRONE_PATROL_CATCH_SPEED * dt, obstacles, DRONE_BODY_RADIUS);
       }
+      clampDroneAltitude(drone.mesh);
+
+      // Local "up" tracks the drone's own position on the sphere (its
+      // surface normal, since it hovers close to the ground) rather than
+      // world +Y — otherwise the antennas would only read as "up" near the
+      // planet's north pole. lookAt() reads this.up each call.
+      drone.mesh.up.copy(drone.mesh.position).normalize();
+      drone.mesh.lookAt(playerPos);
 
       const chasing = drone.mode === 'chase';
-      for (const r of drone.mesh.userData.rotors) r.rotation.y += dt * (chasing ? 50 : 30);
       drone.mesh.userData.blinkLight.visible = Math.floor(elapsed * (chasing ? 8 : 4)) % 2 === 0;
     }
   }
@@ -884,6 +886,11 @@ export async function createGroundScene({ onLaunch } = {}) {
   function updateClouds(dt) {
     cloudLayer.rotation.y += dt * 0.03;
     cloudLayer.rotation.x += dt * 0.007;
+    // Drifts at its own independent rate (slower, different axis balance)
+    // so the two layers visibly move relative to each other — real
+    // parallax instead of the whole sky feeling like one rigid shell.
+    highCloudLayer.rotation.y += dt * 0.014;
+    highCloudLayer.rotation.z += dt * 0.005;
   }
 
   function updateEarth(dt) {
@@ -896,14 +903,6 @@ export async function createGroundScene({ onLaunch } = {}) {
       const t = elapsed * sway.speed + sway.phase;
       sway.mesh.rotateX(Math.sin(t) * sway.amplitude);
       sway.mesh.rotateZ(Math.cos(t * 0.8) * sway.amplitude * 0.6);
-    }
-  }
-
-  function updateWater(elapsed) {
-    for (const feature of waterFeatures) {
-      feature.glint.material.opacity = 0.14 + (Math.sin(elapsed * 0.5 + feature.phase) * 0.5 + 0.5) * 0.16;
-      const scale = 1 + Math.sin(elapsed * 0.35 + feature.phase) * 0.08;
-      feature.glint.scale.set(scale, scale, 1);
     }
   }
 
@@ -982,7 +981,6 @@ export async function createGroundScene({ onLaunch } = {}) {
       updateWildlife(dt);
       updateSmoke(dt);
       updateWind(elapsed);
-      updateWater(elapsed);
       updateFuelBeacon(elapsed);
       updateMinimap();
     },
@@ -1004,15 +1002,57 @@ function inClearZone(normal) {
 // Distance is measured as arc length along the sphere (angle * radius)
 // rather than straight-line, so the embed-depth offset between the player's
 // surface radius and a decoration's slightly sunk-in radius doesn't matter.
-function hitsObstacle(normal, obstacles) {
+function hitsObstacle(normal, obstacles, bodyRadius = PLAYER_COLLISION_RADIUS) {
   for (const obs of obstacles) {
     const arc = PLANET_RADIUS * normal.angleTo(obs.normal);
-    if (arc < PLAYER_COLLISION_RADIUS + obs.radius) return true;
+    if (arc < bodyRadius + obs.radius) return true;
   }
   return false;
 }
 
-async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, windSwayables, wildlifeAnimals, waterFeatures) {
+// Drones previously flew straight at their target with zero regard for the
+// same `obstacles` list the player collides with, so a low-altitude chase
+// near a 7-unit-tall pine (or any rock/house/volcano) would fly straight
+// through its trunk/geometry — reading as "colliding with everything the
+// player collides with" since it clips right into whatever the player was
+// dodging around. Mirrors the player's bump collision but slides sideways
+// along the obstacle's tangent instead of just freezing at the wall, so a
+// chasing drone routes around solid terrain rather than clipping through it
+// or stalling dead (same fix already applied to the client-world sentries).
+function stepAvoidingObstacles(pos, target, maxStep, obstacles, bodyRadius) {
+  const prev = pos.clone();
+  moveToward(pos, target, maxStep);
+  if (!hitsObstacle(pos.clone().normalize(), obstacles, bodyRadius)) return;
+
+  pos.copy(prev);
+  const toTarget = new THREE.Vector3().subVectors(target, prev);
+  if (toTarget.lengthSq() < 1e-6) return;
+  const outward = prev.clone().normalize();
+  const perp = new THREE.Vector3().crossVectors(toTarget, outward).normalize();
+  for (const dir of [perp, perp.clone().negate()]) {
+    const candidate = prev.clone().addScaledVector(dir, maxStep);
+    if (!hitsObstacle(candidate.clone().normalize(), obstacles, bodyRadius)) {
+      pos.copy(candidate);
+      return;
+    }
+  }
+  // Boxed in on both sides — hold position rather than clip through.
+}
+
+// Re-projects the drone back onto (at least) its minimum hover shell if
+// movement this frame let its distance from the planet's center drift
+// below MIN_DRONE_ALTITUDE — see the constant's comment for why that drift
+// happens at all. Never pushes a drone UP (a legitimately higher altitude
+// is left untouched), only ever corrects a sink below the floor.
+function clampDroneAltitude(mesh) {
+  const minRadius = PLANET_RADIUS + MIN_DRONE_ALTITUDE;
+  const currentRadius = mesh.position.length();
+  if (currentRadius < minRadius) {
+    mesh.position.multiplyScalar(minRadius / currentRadius);
+  }
+}
+
+async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, windSwayables, wildlifeAnimals) {
   const tasks = [
     scatterForest(scene, obstacles, windSwayables),
     scatterMeadows(scene, windSwayables),
@@ -1020,7 +1060,6 @@ async function populatePlanet(scene, satelliteGroup, earthGroup, obstacles, wind
     placeVolcano(scene, obstacles),
     placeSmallVolcano(scene, obstacles),
     placeWildlife(scene, wildlifeAnimals),
-    placeLake(scene, obstacles, waterFeatures),
     loadDecoration('/assets/satellite.glb', 3.2).then((wrapper) => {
       wrapper.position.y -= 1.6; // center it rather than feet-at-origin, since it floats in space
       satelliteGroup.add(wrapper);
@@ -1159,42 +1198,6 @@ async function placeSmallVolcano(scene, obstacles) {
   obstacles.push({ normal: SMALL_VOLCANO_SPOT.normal.clone(), radius: SMALL_VOLCANO_BLOCK_RADIUS });
 }
 
-// Water is a flat disc laid on the curved terrain — no baked-in rotation
-// (orientToNormal overwrites the whole quaternion, same gotcha as the
-// client-world street pads), so it's rotated flat via a relative rotateX
-// *after* orientToNormal runs. Solid (blocks walking into it, like any
-// other obstacle) with a ring of rock decorations along the shore both for
-// looks and to help hide the small curvature gap a flat disc this size gets
-// at its rim on a 22-unit-radius planet.
-async function placeLake(scene, obstacles, waterFeatures) {
-  const water = createLakeWater(LAKE_RADIUS);
-  orientToNormal(water, LAKE_SPOT.normal, 0);
-  water.rotateX(-Math.PI / 2);
-  placeOnSurface(water, LAKE_SPOT.normal, EMBED.lake);
-  scene.add(water);
-  obstacles.push({ normal: LAKE_SPOT.normal.clone(), radius: LAKE_RADIUS });
-  waterFeatures.push({ glint: water.userData.glint, phase: Math.random() * Math.PI * 2 });
-
-  const shoreBasis = tangentBasis(LAKE_SPOT.normal);
-  await Promise.all(Array.from({ length: LAKE_SHORE_ROCK_COUNT }).map(async (_, i) => {
-    try {
-      const angle = (i / LAKE_SHORE_ROCK_COUNT) * Math.PI * 2 + Math.random() * 0.3;
-      const dist = (LAKE_RADIUS + 0.6 + Math.random() * 1.2) / PLANET_RADIUS;
-      const point = LAKE_SPOT.normal.clone()
-        .addScaledVector(shoreBasis.u, Math.cos(angle) * dist)
-        .addScaledVector(shoreBasis.v, Math.sin(angle) * dist)
-        .normalize();
-      const height = 0.5 + Math.random() * 0.6;
-      const rock = await loadDecoration('/assets/rock.glb', height);
-      placeOnSurface(rock, point, EMBED.lakeRock);
-      orientToNormal(rock, point, Math.random() * Math.PI * 2);
-      scene.add(rock);
-    } catch (err) {
-      console.error('Failed to place lake shore rock:', err);
-    }
-  }));
-}
-
 // Idle-ish clips the deer/stag models ship with — cycled between so they
 // read as alive rather than a frozen static prop.
 const WILDLIFE_STATES = ['Idle', 'Eating', 'Idle_Headlow', 'Idle_2'];
@@ -1222,18 +1225,23 @@ function createSmokePuff() {
   return new THREE.Mesh(geo, mat);
 }
 
+// scale randomizes the overall cloud size on top of per-puff size — mixing
+// small stray wisps with big cumulus clusters reads as far more varied/
+// alive than every cloud being roughly the same volume.
 function createCloudPuff() {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 1, metalness: 0, transparent: true, opacity: 0.85,
   });
-  const puffCount = 4 + Math.floor(Math.random() * 3);
+  const puffCount = 3 + Math.floor(Math.random() * 5);
   for (let i = 0; i < puffCount; i++) {
-    const r = 0.6 + Math.random() * 0.5;
+    const r = 0.5 + Math.random() * 0.65;
     const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 10), mat);
-    puff.position.set((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 1.2);
+    puff.position.set((Math.random() - 0.5) * 2.0, (Math.random() - 0.5) * 0.35, (Math.random() - 0.5) * 1.5);
     group.add(puff);
   }
+  const scale = 0.7 + Math.random() * 0.9;
+  group.scale.setScalar(scale);
   return group;
 }
 
@@ -1243,6 +1251,36 @@ function createCloudLayer() {
   for (const point of points) {
     const cloud = createCloudPuff();
     cloud.position.copy(point).multiplyScalar(PLANET_RADIUS + CLOUD_ALTITUDE);
+    orientToNormal(cloud, point, Math.random() * Math.PI * 2);
+    layer.add(cloud);
+  }
+  return layer;
+}
+
+// Thin, flat, elongated streaks (unlike the puffy cumulus layer below them)
+// at a higher altitude — a classic cirrus-style high layer that reads as
+// real sky depth rather than just "more of the same clouds."
+function createWispyCloud() {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xf4f8ff, transparent: true, opacity: 0.35, depthWrite: false,
+  });
+  const wispCount = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < wispCount; i++) {
+    const wisp = new THREE.Mesh(new THREE.SphereGeometry(0.5 + Math.random() * 0.4, 8, 6), mat);
+    wisp.scale.set(3 + Math.random() * 2.5, 0.35, 1);
+    wisp.position.set((Math.random() - 0.5) * 3.5, (Math.random() - 0.5) * 0.2, (Math.random() - 0.5) * 1.2);
+    group.add(wisp);
+  }
+  return group;
+}
+
+function createHighCloudLayer() {
+  const layer = new THREE.Group();
+  const points = fibonacciSphere(CLOUD_HIGH_COUNT);
+  for (const point of points) {
+    const cloud = createWispyCloud();
+    cloud.position.copy(point).multiplyScalar(PLANET_RADIUS + CLOUD_HIGH_ALTITUDE);
     orientToNormal(cloud, point, Math.random() * Math.PI * 2);
     layer.add(cloud);
   }
