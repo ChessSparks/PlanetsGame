@@ -5,6 +5,7 @@ import {
 } from './game/hud.js';
 import { showTitleScreen } from './game/titleScreen.js';
 import { initSettingsMenu } from './game/settingsMenu.js';
+import { loadProgress, saveProgress, clearProgress } from './game/progress.js';
 
 // Each scene is dynamically imported at the point it's actually needed
 // (see the phase-starter functions below) rather than statically up top —
@@ -73,6 +74,7 @@ async function startTravelPhase(config, next) {
 }
 
 async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
+  saveProgress({ phase: 'ascent', fuelCollected: fuelCellsCollected, fuelTotal: totalFuelCells });
   const startFuel = Math.min(100, 60 + Math.round((fuelCellsCollected / totalFuelCells) * 40));
   hideKeysDisplay();
   showHud();
@@ -115,6 +117,7 @@ async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
 }
 
 async function startMoonPhase() {
+  saveProgress({ phase: 'moon' });
   camera.position.set(0, 12, 6.5);
   teardownActiveScene();
   const { createMoonScene } = await import('./scenes/moonScene.js');
@@ -143,6 +146,7 @@ async function startMoonPhase() {
 }
 
 async function startClientWorldPhase() {
+  saveProgress({ phase: 'client' });
   camera.position.set(0, 30, 8);
   teardownActiveScene();
   const returnTravelConfig = {
@@ -174,6 +178,7 @@ async function startClientWorldPhase() {
 }
 
 async function startGroundPhase() {
+  saveProgress({ phase: 'ground' });
   camera.position.set(0, 25, 6.5);
   teardownActiveScene();
   const { createGroundScene } = await import('./scenes/groundScene.js');
@@ -192,84 +197,22 @@ async function startGroundPhase() {
   hideLoadingScreen();
 }
 
-// Dev-only convenience so testing the moon/ascent phases doesn't require
-// replaying the whole game from the crash cutscene every time. Ascent
-// launched directly gets a full tank (no ground-collected fuel cells to
-// compute a percentage from).
-const PHASE_STARTERS = {
-  ground: () => startGroundPhase(),
-  ascent: () => startAscentPhase(1, 1),
-  moon: () => startMoonPhase(),
-  client: () => startClientWorldPhase(),
-};
-
-function launchPhase(name) {
-  showLoadingScreen();
-  PHASE_STARTERS[name]().catch((err) => {
-    console.error(`Failed to start ${name} phase:`, err);
-    hideLoadingScreen();
-    showOverlay(
-      'Something went wrong',
-      `The ${name} scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
-      'Retry',
-      () => launchPhase(name),
-    );
-  });
-}
-
-// A small always-present hamburger button (top-left) instead of a blocking
-// startup screen — the game boots normally, and this menu is available at
-// any time to jump straight to another phase for testing.
-function initDevMenu() {
-  const toggle = document.createElement('button');
-  toggle.id = 'dev-menu-toggle';
-  toggle.type = 'button';
-  toggle.textContent = '☰';
-  toggle.style.cssText = `
-    position: fixed; top: 14px; left: 14px; z-index: 70;
-    width: 36px; height: 36px; border-radius: 8px; border: 1px solid rgba(120,180,255,0.35);
-    background: rgba(6,14,32,0.75); color: #eaf6ff; font-size: 18px; cursor: pointer;
-  `;
-  document.body.appendChild(toggle);
-
-  const panel = document.createElement('div');
-  panel.id = 'dev-menu-panel';
-  panel.style.cssText = `
-    position: fixed; top: 56px; left: 14px; z-index: 70; display: none;
-    flex-direction: column; gap: 6px; padding: 10px;
-    background: rgba(6,14,32,0.92); border: 1px solid rgba(120,180,255,0.35);
-    border-radius: 10px; box-shadow: 0 0 20px rgba(0,0,0,0.4);
-  `;
-  panel.innerHTML = `
-    <div style="font-size: 10px; letter-spacing: 2px; opacity: 0.55; text-transform: uppercase; padding: 2px 6px;">Dev — jump to</div>
-    <button data-phase="ground" type="button" class="dev-menu-btn">Ground</button>
-    <button data-phase="ascent" type="button" class="dev-menu-btn">Ascent</button>
-    <button data-phase="moon" type="button" class="dev-menu-btn">Moon</button>
-    <button data-phase="client" type="button" class="dev-menu-btn">Client World</button>
-  `;
-  document.body.appendChild(panel);
-
-  for (const btn of panel.querySelectorAll('.dev-menu-btn')) {
-    btn.style.cssText = `
-      font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 6px;
-      border: none; cursor: pointer; background: rgba(255,255,255,0.1); color: #eaf6ff;
-      text-align: left;
-    `;
-    btn.addEventListener('click', () => {
-      panel.style.display = 'none';
-      launchPhase(btn.dataset.phase);
-    });
+// Resumes whichever phase a saved progress record points to. Ascent is the
+// only phase with extra state to restore (the fuel percentage it starts
+// with is derived from how many fuel cells were collected on the ground).
+function resumeFromProgress(progress) {
+  switch (progress.phase) {
+    case 'ascent':
+      return startAscentPhase(progress.fuelCollected ?? 1, progress.fuelTotal ?? 1);
+    case 'moon':
+      return startMoonPhase();
+    case 'client':
+      return startClientWorldPhase();
+    case 'ground':
+    default:
+      return startGroundPhase();
   }
-
-  toggle.addEventListener('click', () => {
-    panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex';
-  });
-  document.addEventListener('click', (e) => {
-    if (!panel.contains(e.target) && e.target !== toggle) panel.style.display = 'none';
-  });
 }
-
-initDevMenu();
 
 // Escape (or the gear button) opens Settings from anywhere and freezes
 // gameplay updates while it's up — see the paused check in animate() below.
@@ -279,21 +222,42 @@ initSettingsMenu({
   onClose: () => { paused = false; },
 });
 
-// The title screen's Start click is the game's first real user gesture —
-// asset loading (and the loading screen) only begins once it fires, rather
-// than starting immediately on page load before the player has done anything.
-showTitleScreen(() => {
-  showLoadingScreen();
-  startGroundPhase().catch((err) => {
-    console.error('Failed to start ground phase:', err);
-    hideLoadingScreen();
-    showOverlay(
-      'Something went wrong',
-      `The planet scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
-      'Retry',
-      () => startGroundPhase().catch((e) => console.error(e)),
-    );
-  });
+// The title screen's Start/Continue click is the game's first real user
+// gesture — asset loading (and the loading screen) only begins once it
+// fires, rather than starting immediately on page load before the player
+// has done anything. A saved progress record (see game/progress.js) offers
+// a Continue option that resumes the furthest phase reached instead of
+// always replaying from the ground level.
+const savedProgress = loadProgress();
+showTitleScreen({
+  hasProgress: !!savedProgress,
+  onStart: () => {
+    clearProgress();
+    showLoadingScreen();
+    startGroundPhase().catch((err) => {
+      console.error('Failed to start ground phase:', err);
+      hideLoadingScreen();
+      showOverlay(
+        'Something went wrong',
+        `The planet scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+        'Retry',
+        () => startGroundPhase().catch((e) => console.error(e)),
+      );
+    });
+  },
+  onContinue: () => {
+    showLoadingScreen();
+    resumeFromProgress(savedProgress).catch((err) => {
+      console.error('Failed to resume saved progress:', err);
+      hideLoadingScreen();
+      showOverlay(
+        'Something went wrong',
+        `The saved game failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+        'Retry',
+        () => resumeFromProgress(savedProgress).catch((e) => console.error(e)),
+      );
+    });
+  },
 });
 
 function animate() {
