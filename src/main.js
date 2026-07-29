@@ -5,7 +5,6 @@ import {
 } from './game/hud.js';
 import { showTitleScreen } from './game/titleScreen.js';
 import { initSettingsMenu } from './game/settingsMenu.js';
-import { loadProgress, saveProgress, clearProgress } from './game/progress.js';
 
 // Each scene is dynamically imported at the point it's actually needed
 // (see the phase-starter functions below) rather than statically up top —
@@ -74,7 +73,6 @@ async function startTravelPhase(config, next) {
 }
 
 async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
-  saveProgress({ phase: 'ascent', fuelCollected: fuelCellsCollected, fuelTotal: totalFuelCells });
   const startFuel = Math.min(100, 60 + Math.round((fuelCellsCollected / totalFuelCells) * 40));
   hideKeysDisplay();
   showHud();
@@ -117,7 +115,6 @@ async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
 }
 
 async function startMoonPhase() {
-  saveProgress({ phase: 'moon' });
   camera.position.set(0, 12, 6.5);
   teardownActiveScene();
   const { createMoonScene } = await import('./scenes/moonScene.js');
@@ -146,7 +143,6 @@ async function startMoonPhase() {
 }
 
 async function startClientWorldPhase() {
-  saveProgress({ phase: 'client' });
   camera.position.set(0, 30, 8);
   teardownActiveScene();
   const returnTravelConfig = {
@@ -178,7 +174,6 @@ async function startClientWorldPhase() {
 }
 
 async function startGroundPhase() {
-  saveProgress({ phase: 'ground' });
   camera.position.set(0, 25, 6.5);
   teardownActiveScene();
   const { createGroundScene } = await import('./scenes/groundScene.js');
@@ -197,23 +192,6 @@ async function startGroundPhase() {
   hideLoadingScreen();
 }
 
-// Resumes whichever phase a saved progress record points to. Ascent is the
-// only phase with extra state to restore (the fuel percentage it starts
-// with is derived from how many fuel cells were collected on the ground).
-function resumeFromProgress(progress) {
-  switch (progress.phase) {
-    case 'ascent':
-      return startAscentPhase(progress.fuelCollected ?? 1, progress.fuelTotal ?? 1);
-    case 'moon':
-      return startMoonPhase();
-    case 'client':
-      return startClientWorldPhase();
-    case 'ground':
-    default:
-      return startGroundPhase();
-  }
-}
-
 // Escape (or the gear button) opens Settings from anywhere and freezes
 // gameplay updates while it's up — see the paused check in animate() below.
 let paused = false;
@@ -222,17 +200,12 @@ initSettingsMenu({
   onClose: () => { paused = false; },
 });
 
-// The title screen's Start/Continue click is the game's first real user
-// gesture — asset loading (and the loading screen) only begins once it
-// fires, rather than starting immediately on page load before the player
-// has done anything. A saved progress record (see game/progress.js) offers
-// a Continue option that resumes the furthest phase reached instead of
-// always replaying from the ground level.
-const savedProgress = loadProgress();
+// The title screen's Start click is the game's first real user gesture —
+// asset loading (and the loading screen) only begins once it fires, rather
+// than starting immediately on page load before the player has done
+// anything.
 showTitleScreen({
-  hasProgress: !!savedProgress,
   onStart: () => {
-    clearProgress();
     showLoadingScreen();
     startGroundPhase().catch((err) => {
       console.error('Failed to start ground phase:', err);
@@ -242,19 +215,6 @@ showTitleScreen({
         `The planet scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
         'Retry',
         () => startGroundPhase().catch((e) => console.error(e)),
-      );
-    });
-  },
-  onContinue: () => {
-    showLoadingScreen();
-    resumeFromProgress(savedProgress).catch((err) => {
-      console.error('Failed to resume saved progress:', err);
-      hideLoadingScreen();
-      showOverlay(
-        'Something went wrong',
-        `The saved game failed to load:\n${err.message}\n\nCheck the browser console for details.`,
-        'Retry',
-        () => resumeFromProgress(savedProgress).catch((e) => console.error(e)),
       );
     });
   },
