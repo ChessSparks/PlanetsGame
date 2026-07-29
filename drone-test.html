@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head><title>drone test</title><style>html,body{margin:0;height:100%;background:#0a0e14}</style></head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { loadDroneTemplate, loadSentryTemplate, cloneDrone } from './src/game/droneModel.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(2.5, 1.5, 3);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.2);
+dl.position.set(3, 5, 2);
+scene.add(dl);
+
+const droneTemplate = await loadDroneTemplate();
+const drone = cloneDrone(droneTemplate);
+drone.position.set(-1.2, 0, 0);
+drone.lookAt(new THREE.Vector3(-1.2, 0, -5));
+scene.add(drone);
+
+const sentryTemplate = await loadSentryTemplate();
+const sentry = cloneDrone(sentryTemplate);
+sentry.position.set(1.2, 0, 0);
+sentry.lookAt(new THREE.Vector3(1.2, 0, -5));
+scene.add(sentry);
+
+window.__ready = true;
+renderer.render(scene, camera);
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

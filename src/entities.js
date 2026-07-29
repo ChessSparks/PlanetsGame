@@ -335,9 +335,9 @@ export function createBird() {
 }
 
 // createDrone/createSentry (hostile drones/sentries) moved to
-// game/droneModel.js — they now load the real drone.glb model instead of
-// building a procedural quad-rotor mesh, which requires async loading that
-// doesn't fit this file's synchronous creator-function convention.
+// game/droneModel.js and kept async (loadDroneTemplate/loadSentryTemplate)
+// to match that module's template+clone loading pattern, even though the
+// model itself is now built synchronously from primitives.
 
 export function createSatellite() {
   const group = new THREE.Group();
