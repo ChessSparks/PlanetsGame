@@ -1,3 +1,5 @@
+import { isTouchDevice } from './touchControls.js';
+
 const SIZE = 160;
 const RANGE = 26; // world units from center to the outer edge
 
@@ -65,10 +67,14 @@ function drawDroneIcon(ctx, x, y, size, color) {
 // relative to the player's own forward/right tangent vectors, so it rotates
 // naturally as the player turns without needing any global "north" on a sphere.
 export function createMinimap() {
+  // Every scene that shows a minimap also hides the HUD, so the top corners
+  // are always free — moved there on touch devices since bottom-left is
+  // where the on-screen movement joystick lives.
+  const corner = isTouchDevice() ? 'top: 16px; right: 16px;' : 'left: 16px; bottom: 16px;';
   const wrap = document.createElement('div');
   wrap.id = 'minimap';
   wrap.style.cssText = `
-    position: fixed; left: 16px; bottom: 16px; width: ${SIZE}px; height: ${SIZE}px;
+    position: fixed; ${corner} width: ${SIZE}px; height: ${SIZE}px;
     border-radius: 50%; overflow: hidden; border: 2px solid rgba(120,200,255,0.5);
     background: rgba(6,14,28,0.75); box-shadow: 0 0 18px rgba(0,0,0,0.5); z-index: 15;
   `;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { initInput } from './game/input.js';
+import { initTouchControls } from './game/touchControls.js';
 import {
   showOverlay, showHud, hideKeysDisplay, setLoadingProgress, hideLoadingScreen, showLoadingScreen,
 } from './game/hud.js';
@@ -35,6 +36,7 @@ window.addEventListener('resize', () => {
 });
 
 initInput();
+initTouchControls();
 
 let activeScene = null;
 const clock = new THREE.Clock();

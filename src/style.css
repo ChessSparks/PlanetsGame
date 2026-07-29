@@ -10,12 +10,15 @@ html, body {
   overflow: hidden;
   background: #000;
   font-family: 'Segoe UI', Arial, sans-serif;
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 #scene {
   position: fixed;
   inset: 0;
   display: block;
+  touch-action: none;
 }
 
 #title-screen {
@@ -818,4 +821,210 @@ html, body {
 
 #cipher-close:hover {
   filter: brightness(1.2);
+}
+
+/* --- On-screen touch controls (mobile/touch-primary devices only) ------- */
+/* z-index 25 sits above the bare canvas but below every overlay (30+), so a
+   full-screen modal (puzzle/settings/dialogue) automatically covers and
+   blocks these controls just by stacking on top — no extra show/hide
+   wiring needed when a menu opens. */
+#touch-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+#tc-joystick {
+  position: absolute;
+  left: 22px;
+  bottom: 22px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(120, 200, 255, 0.35);
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#tc-stick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin-left: -26px;
+  margin-top: -26px;
+  border-radius: 50%;
+  background: rgba(120, 200, 255, 0.5);
+  border: 2px solid rgba(200, 230, 255, 0.6);
+  transition: background 0.1s ease;
+}
+
+#tc-actions {
+  position: absolute;
+  right: 20px;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+
+.tc-btn {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(120, 200, 255, 0.4);
+  color: #eaf6ff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.tc-btn.active {
+  background: rgba(120, 200, 255, 0.45);
+}
+
+/* --- Responsive pass: phones and small tablets -------------------------- */
+@media (max-width: 700px) {
+  #title-name {
+    font-size: clamp(26px, 8vw, 42px);
+    letter-spacing: 2px;
+  }
+
+  #title-tagline {
+    font-size: 12px;
+    margin-bottom: 22px;
+  }
+
+  #title-start-btn {
+    font-size: 14px;
+    padding: 12px 32px;
+  }
+
+  #title-content {
+    padding-bottom: 6vh;
+  }
+
+  #hud {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    gap: 12px;
+  }
+
+  .bar-group {
+    width: 130px;
+  }
+
+  .bar-label {
+    font-size: 10px;
+  }
+
+  #cells-counter {
+    font-size: 12px;
+  }
+
+  /* settingsMenu.js sets this button's size via inline style.cssText, which
+     otherwise always wins over an external stylesheet rule regardless of
+     media query — !important is required here to actually shrink it. */
+  #settings-toggle {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 15px !important;
+  }
+
+  #settings-box,
+  #message-box,
+  #choice-box,
+  #puzzle-box,
+  #circuit-box,
+  #cipher-box,
+  #starchart-box {
+    max-width: 92vw;
+    padding: 20px 18px;
+  }
+
+  #message-box h1, #choice-box h1 {
+    font-size: 20px;
+  }
+
+  #puzzle-box h1, #circuit-box h1, #cipher-box h1, #starchart-box h1, #settings-box h1 {
+    font-size: 18px;
+  }
+
+  #message-box p, #choice-box p, #puzzle-box p, #circuit-box p, #cipher-box p, #starchart-box p {
+    font-size: 12.5px;
+  }
+
+  .choice-btn, #message-button {
+    font-size: 13px;
+    padding: 10px 20px;
+  }
+
+  /* #puzzle-grid (4x56px = 236px w/ gaps) and #circuit-grid (3x60px = 188px)
+     already fit within any realistic phone width at their desktop size —
+     the box padding/font shrink above is enough, no grid resize needed. */
+
+  .cipher-slot {
+    width: 44px;
+    height: 44px;
+    font-size: 15px;
+  }
+
+  #cipher-slots {
+    flex-wrap: wrap;
+  }
+
+  /* #starchart-ring is intentionally left at its fixed 220px size — the
+     node positions are computed in starChartPuzzle.js as fixed pixel
+     offsets from the ring's center (RING_RADIUS = 90px), not percentages,
+     so shrinking the container here without also changing that JS constant
+     would push nodes outside the ring's visible bounds. 220px already fits
+     comfortably within the narrowest common phone viewport (~320px). */
+
+  #minimap {
+    width: 120px !important;
+    height: 120px !important;
+  }
+
+  #tc-joystick {
+    width: 104px;
+    height: 104px;
+  }
+
+  .tc-btn {
+    width: 54px;
+    height: 54px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 380px) {
+  #title-name {
+    font-size: 24px;
+  }
+
+  .bar-group {
+    width: 100px;
+  }
+
+  #hud {
+    gap: 8px;
+  }
+
+  #cells-counter {
+    font-size: 10.5px;
+  }
 }
