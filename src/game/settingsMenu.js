@@ -49,7 +49,7 @@ function ensureDom() {
   toggleBtn.type = 'button';
   toggleBtn.textContent = '⚙';
   toggleBtn.style.cssText = `
-    position: fixed; top: 14px; right: 14px; z-index: 70;
+    position: fixed; top: 14px; left: 14px; z-index: 70;
     width: 36px; height: 36px; border-radius: 8px; border: 1px solid rgba(120,180,255,0.35);
     background: rgba(6,14,32,0.75); color: #eaf6ff; font-size: 18px; cursor: pointer;
   `;
