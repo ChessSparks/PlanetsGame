@@ -1,4 +1,5 @@
 import { duckMusic } from './audio.js';
+import { isTouchDevice } from './touchControls.js';
 
 // Speaks lines aloud via the browser's built-in speech synthesis (no audio
 // assets needed). Silently does nothing if unsupported. Must be triggered
@@ -79,6 +80,15 @@ function speakWith(text, voice, pitch, rate, onEnd) {
 // fast string of objective updates doesn't pile up a backlog of stale lines.
 export function speak(text, onEnd) {
   if (voiceMuted) {
+    if (onEnd) onEnd();
+    return;
+  }
+  // Mobile browsers' speechSynthesis support is spotty (often silent or
+  // requires a fresh user gesture per utterance rather than once per
+  // session), and text-to-speech competing with on-screen touch controls
+  // for the player's attention is a worse experience than just skipping it —
+  // Corthana's lines still show as objective/toast text either way.
+  if (isTouchDevice()) {
     if (onEnd) onEnd();
     return;
   }
