@@ -62,12 +62,10 @@ const VOLCANO_SPOT = { normal: sph(-35, 12), clear: 0.4 };
 // A short walk from the main volcano — where the fuel puzzle lives, found
 // only after the ship is repaired.
 const SMALL_VOLCANO_SPOT = { normal: sph(-24, 30), clear: 0.15 };
-const WILDLIFE_SPOTS = [
-  { normal: sph(6, -50), url: '/assets/deer.glb', height: 1.2 },
-  { normal: sph(-6, -72), url: '/assets/deer.glb', height: 1.15 },
-  { normal: sph(20, -112), url: '/assets/stag.glb', height: 1.4 },
-  { normal: sph(-16, -132), url: '/assets/stag.glb', height: 1.35 },
-];
+// Deer/stag models pulled from the level — the stag.glb rig has its
+// antlers unskinned from the head bone, so they visibly float in place
+// while the rest of the animal animates underneath them.
+const WILDLIFE_SPOTS = [];
 const SPAWN_CLEAR = { normal: new THREE.Vector3(0, 1, 0), clear: 0.16 };
 
 // Dense grassy meadows — distinct from the sparse, uniformly-scattered grass
@@ -681,7 +679,18 @@ export async function createGroundScene({ onLaunch } = {}) {
           guardMessage = 'Guardian drone deactivated — that part is safe now. ';
         }
         if (keysCollected >= keyPickups.length) {
-          announce(`${guardMessage}All parts recovered. Objective: return to the spaceship and press E to repair it.`);
+          const finalLine = 'All parts recovered. Objective: return to the spaceship and press E to repair it.';
+          if (guardMessage) {
+            // Spoken as two separate lines chained via onEnd rather than one
+            // concatenated string — the combined string never matches either
+            // recorded clip in voice.js's VOICE_CLIPS, so it was silently
+            // falling back to robotic browser TTS for the whole sentence
+            // whenever the last part collected happened to be a guarded one.
+            announceObjective(`${guardMessage}${finalLine}`);
+            speak(guardMessage.trim(), () => speak(finalLine));
+          } else {
+            announce(finalLine);
+          }
         } else {
           if (guardMessage) announce(guardMessage.trim());
           flashToast(`Part found! (${keysCollected}/${keyPickups.length})`, 2000);
