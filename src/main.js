@@ -145,6 +145,27 @@ async function startMoonPhase() {
   hideLoadingScreen();
 }
 
+// A teaser card shown right before the Mission Complete/Restart screen —
+// hints at future missions/planets rather than just cutting straight to
+// "the end," so the story reads as paused rather than fully closed off.
+function showToBeContinuedScreen() {
+  teardownActiveScene();
+  hideHud();
+  hideKeysDisplay();
+  showOverlay(
+    'To Be Continued...',
+    'Corthana\'s still running diagnostics when the next contract comes through — encrypted, unsigned, already accepted.\n\n'
+    + 'Coming missions:\n\n'
+    + '— Mission V: The Buyer\'s List\n'
+    + '— Mission VI: What the Crystals Remember\n'
+    + '— Mission VII: The Next Quiet Planet\n'
+    + '— Mission VIII: Reclamation\n\n'
+    + 'The ship\'s fueled. The stars aren\'t going anywhere. Neither, it turns out, are you.',
+    'Continue',
+    () => showEndingScreen(),
+  );
+}
+
 // Final overlay after the story's last choice plays out — offers a clean
 // restart instead of the game silently looping back into a new run the way
 // every earlier level transition does. Restart re-enters at the ground
@@ -186,9 +207,9 @@ async function startClientWorldPhase() {
     shotStyle: 'pullback',
     musicTheme: 'ground',
   };
-  const handleEnding = () => startTravelPhase(endingTravelConfig, async () => showEndingScreen()).catch((err) => {
+  const handleEnding = () => startTravelPhase(endingTravelConfig, async () => showToBeContinuedScreen()).catch((err) => {
     console.error('Failed to play the closing cutscene:', err);
-    showEndingScreen();
+    showToBeContinuedScreen();
   });
   const { createClientWorldScene } = await import('./scenes/clientWorldScene.js');
   const clientWorld = await createClientWorldScene({
@@ -254,8 +275,8 @@ showTitleScreen({
 if (import.meta.env.DEV) {
   const panel = document.createElement('div');
   panel.id = 'dev-level-switcher';
-  // Hidden from the start — visible gameplay/title screen shouldn't show a
-  // dev tool by default. Press the backtick key (`) to toggle it on/off.
+  // Hidden on the start screen and everywhere else by default — press the
+  // backtick key (`) to toggle it on when you actually need it.
   panel.style.cssText = `
     position: fixed; bottom: 10px; left: 10px; z-index: 10000;
     display: none; gap: 6px; padding: 8px; border-radius: 8px;
