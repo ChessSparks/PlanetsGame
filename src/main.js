@@ -6,6 +6,7 @@ import {
 } from './game/hud.js';
 import { showTitleScreen } from './game/titleScreen.js';
 import { initSettingsMenu } from './game/settingsMenu.js';
+import { unlockAudio } from './game/audio.js';
 
 // Each scene is dynamically imported at the point it's actually needed
 // (see the phase-starter functions below) rather than statically up top —
@@ -244,6 +245,63 @@ showTitleScreen({
     });
   },
 });
+
+// --- Dev-only level switcher ------------------------------------------
+// Lets a developer jump straight to any level while iterating, instead of
+// replaying the whole game up to that point every time. import.meta.env.DEV
+// is statically false in a production build, so Vite dead-code-eliminates
+// this whole block — none of it ships.
+if (import.meta.env.DEV) {
+  const panel = document.createElement('div');
+  panel.id = 'dev-level-switcher';
+  // Hidden from the start — visible gameplay/title screen shouldn't show a
+  // dev tool by default. Press the backtick key (`) to toggle it on/off.
+  panel.style.cssText = `
+    position: fixed; bottom: 10px; left: 10px; z-index: 10000;
+    display: none; gap: 6px; padding: 8px; border-radius: 8px;
+    background: rgba(10, 14, 24, 0.8); border: 1px solid rgba(120, 180, 255, 0.35);
+    font-family: sans-serif;
+  `;
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== '`') return;
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+  });
+
+  function addDevJumpButton(label, run) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.style.cssText = `
+      cursor: pointer; padding: 6px 10px; border-radius: 6px; border: none;
+      background: #2a3a55; color: #eaf6ff; font-size: 12px; font-family: inherit;
+    `;
+    btn.addEventListener('click', () => {
+      // A real click, so this also doubles as the audio-unlock gesture
+      // scenes jumped to directly would otherwise never get.
+      unlockAudio();
+      document.getElementById('title-screen')?.classList.add('hidden');
+      showLoadingScreen();
+      run().catch((err) => {
+        console.error(`Dev jump to "${label}" failed:`, err);
+        hideLoadingScreen();
+        showOverlay(
+          'Something went wrong',
+          `Failed to jump to ${label}:\n${err.message}\n\nCheck the browser console for details.`,
+          'Dismiss',
+          () => {},
+        );
+      });
+    });
+    panel.appendChild(btn);
+  }
+
+  addDevJumpButton('Ground', () => startGroundPhase());
+  addDevJumpButton('Ascent', () => startAscentPhase(10, 10));
+  addDevJumpButton('Moon', () => startMoonPhase());
+  addDevJumpButton('Client World', () => startClientWorldPhase());
+
+  document.body.appendChild(panel);
+}
 
 function animate() {
   requestAnimationFrame(animate);

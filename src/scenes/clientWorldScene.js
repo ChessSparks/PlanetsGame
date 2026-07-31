@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
   createForgeGround, createStarfield, createSpire, createSun,
-  createIndustrialBuilding, createStreetPad, createControlTower,
+  createIndustrialBuilding, createControlTower,
 } from '../entities.js';
 import { loadAstronaut } from '../game/character.js';
 import { loadDecoration } from '../game/models.js';
@@ -112,12 +112,9 @@ const CONTROL_TOWER_INTERACT_RADIUS = 4.5;
 const EMBED = { ship: 0.5, rock: 0.15, spire: 0.4, console: 0.3, tower: 0.3, building: 0.4 };
 
 const SENTRY_HAZARD_RADIUS = 1.4;
-const SENTRY_AGGRO_RADIUS = 10;
-const SENTRY_DISENGAGE_RADIUS = 15;
 const SENTRY_CHASE_ALTITUDE = 1.0;
 const SENTRY_BODY_RADIUS = 0.9;
 const SENTRY_CHASE_SPEED = 5.4; // slower than RUN_SPEED — outrunning them is always possible
-const SENTRY_MAX_CHASE_SECONDS = 9;
 const SENTRY_PATROL_CATCH_SPEED = 9;
 
 function tangentBasis(normal) {
@@ -333,7 +330,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   const sentries = SENTRY_PATROLS.map((patrol) => {
     const mesh = cloneDrone(sentryTemplate);
     scene.add(mesh);
-    return { ...patrol, mesh, ...tangentBasis(patrol.center), mode: 'patrol', chaseTime: 0 };
+    return { ...patrol, mesh, ...tangentBasis(patrol.center), mode: 'patrol' };
   });
 
   // Scattered ruins and building districts load in the background — a
@@ -378,7 +375,6 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     walker = createPlanetWalker(SPAWN_SPOT.normal.clone(), new THREE.Vector3(0, 0, -1));
     for (const sentry of sentries) {
       sentry.mode = 'patrol';
-      sentry.chaseTime = 0;
       // Without this, a sentry that just killed you stays exactly where it
       // caught you — only its mode resets. If that happened near spawn, the
       // very next frame's hazard check sees it still standing on top of you
@@ -478,7 +474,6 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     sentriesActive = true;
     for (const sentry of sentries) {
       sentry.mode = 'chase';
-      sentry.chaseTime = 0;
     }
     flashToast('Alarms blare across the compound!', 2400);
     playDroneAlert();
@@ -644,7 +639,6 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
         sentriesDisabled = true;
         for (const sentry of sentries) {
           sentry.mode = 'patrol';
-          sentry.chaseTime = 0;
         }
         state = 'playing';
         playPickupChime();
@@ -681,19 +675,20 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
 
   function updateSentries(dt, elapsed, playerPos, playerNormal) {
     for (const sentry of sentries) {
-      if (sentriesActive && !sentriesDisabled) {
-        const distToPlayer = sentry.mesh.position.distanceTo(playerPos);
-        if (sentry.mode === 'patrol' && respawnGraceTimer <= 0 && distToPlayer < SENTRY_AGGRO_RADIUS) {
-          sentry.mode = 'chase';
-          sentry.chaseTime = 0;
-        } else if (sentry.mode === 'chase'
-          && (distToPlayer > SENTRY_DISENGAGE_RADIUS || sentry.chaseTime > SENTRY_MAX_CHASE_SECONDS)) {
-          sentry.mode = 'patrol';
-        }
+      // Once the alarm's tripped, aggro is one-way: sentries hunt
+      // permanently until the control tower puzzle takes them offline,
+      // instead of giving up after a few seconds/units and going back to a
+      // fixed orbit the player has usually already moved well away from —
+      // that used to let anyone holding Shift+W defuse the whole "alarms
+      // blare across the compound" beat in under 10 seconds. The only time
+      // a sentry is in 'patrol' mode while active is the moment right after
+      // a respawn (see resetRun); this resumes the hunt as soon as that
+      // grace window ends.
+      if (sentriesActive && !sentriesDisabled && sentry.mode === 'patrol' && respawnGraceTimer <= 0) {
+        sentry.mode = 'chase';
       }
 
       if (sentry.mode === 'chase') {
-        sentry.chaseTime += dt;
         sentryChaseTarget.copy(playerNormal).multiplyScalar(PLANET_RADIUS + SENTRY_CHASE_ALTITUDE);
         stepAvoidingObstacles(sentry.mesh.position, sentryChaseTarget, SENTRY_CHASE_SPEED * dt, obstacles, SENTRY_BODY_RADIUS);
       } else {
@@ -841,12 +836,6 @@ function scatterDistricts(scene, obstacles) {
         orientToNormal(building, point, 0);
         scene.add(building);
         obstacles.push({ normal: point.clone(), radius: building.userData.radius });
-
-        const pad = createStreetPad(size * 1.6, size * 1.6);
-        orientToNormal(pad, point, 0);
-        pad.rotateX(-Math.PI / 2);
-        placeOnSurface(pad, point, -0.03);
-        scene.add(pad);
       }
     }
   }

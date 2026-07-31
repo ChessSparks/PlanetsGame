@@ -37,57 +37,6 @@ export function createSun(color, coreRadius) {
   return group;
 }
 
-function makeEarthTexture() {
-  const size = 512;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size / 2;
-  const ctx = canvas.getContext('2d');
-
-  ctx.fillStyle = '#1560c4';
-  ctx.fillRect(0, 0, size, size / 2);
-
-  const blobs = [
-    [60, 60, 70, '#2d8f4e'], [160, 90, 50, '#2d8f4e'], [300, 50, 90, '#37a05c'],
-    [400, 100, 60, '#2d8f4e'], [220, 160, 80, '#2d7d46'], [80, 180, 55, '#2d7d46'],
-    [460, 180, 40, '#2d8f4e'], [340, 190, 45, '#37a05c'], [140, 40, 35, '#2d7d46'],
-  ];
-  for (const [x, y, r, color] of blobs) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  for (let i = 0; i < 10; i++) {
-    const x = (i * 97 + 30) % size;
-    const y = (i * 53 + 10) % (size / 2);
-    const r = 15 + (i % 4) * 6;
-    ctx.beginPath();
-    ctx.ellipse(x, y, r, r * 0.4, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-export function createEarth(radius) {
-  const group = new THREE.Group();
-  const texture = makeEarthTexture();
-  const mat = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85, metalness: 0.05 });
-  const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 64, 64), mat);
-  group.add(sphere);
-
-  const atmoMat = new THREE.MeshBasicMaterial({ color: 0x4dd0ff, transparent: true, opacity: 0.08, side: THREE.BackSide });
-  const atmo = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.02, 48, 48), atmoMat);
-  group.add(atmo);
-
-  return group;
-}
-
 // Plain THREE.Points render as flat squares (gl_PointCoord is a square by
 // default) unless the material has a sprite texture masking each point down
 // to a circle — barely visible at size ~1.4 but obviously square once a
@@ -558,11 +507,6 @@ export function createIndustrialBuilding(width, depth, height) {
 // just get discarded. Callers lay this flat via orientToNormal() followed by
 // a relative pad.rotateX(-Math.PI / 2) (see how the ship's readyRing does
 // the same thing in groundScene.js).
-export function createStreetPad(width, depth) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x1c1a1a, metalness: 0.2, roughness: 0.85 });
-  return new THREE.Mesh(new THREE.PlaneGeometry(width, depth), mat);
-}
-
 // The control tower — where the sentries get shut down once they've turned
 // hostile. Deliberately utilitarian next to the spire's menace: a boxy
 // mast with a radar dish and a blinking beacon, reading as "comms/security

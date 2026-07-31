@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import {
-  createEarth, createStarfield, createFuelCell,
+  createPlanetGround, createStarfield, createFuelCell,
   createBird, createSatellite, createOrbitRing,
 } from '../entities.js';
 import { loadDecoration } from '../game/models.js';
+import { orientToNormal } from '../game/planet.js';
 import { loadDroneTemplate, cloneDrone } from '../game/droneModel.js';
 import { keys, consumeInteractPress } from '../game/input.js';
 import {
@@ -15,7 +16,11 @@ import {
 } from '../game/audio.js';
 
 const ORBIT_ALTITUDE = 140;
-const EARTH_RADIUS = 300;
+// The actual ground level's planet radius (see groundScene.js's own
+// PLANET_RADIUS) — this is the same small world the player just explored,
+// not a generic huge Earth stand-in, so it shrinks into a distant ball
+// quickly as you climb rather than behaving like a real-scale planet.
+const PLANET_RADIUS = 32;
 const LANE_HALF_WIDTH = 7;
 
 // Reuses the same spaceship model (and normalization convention — feet/base
@@ -36,7 +41,7 @@ const MAX_FALL_SPEED = -22;
 // eases up from the pad to LIFTOFF_HANDOFF_Y on its own, then hands off
 // exactly LIFTOFF_HANDOFF_VY of upward velocity so normal gravity/thrust
 // physics picks up smoothly instead of the ship suddenly "starting" mid-air.
-const LIFTOFF_DURATION = 3.2;
+const LIFTOFF_DURATION = 4.2;
 const LIFTOFF_HANDOFF_Y = 6;
 const LIFTOFF_HANDOFF_VY = 9;
 
@@ -89,6 +94,74 @@ function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2;
 }
 
+// Places an object on the local dome of the small planet directly beneath
+// the pad, given a flat (dx, dz) offset from the pad's center — the sphere
+// is tangent to the pad at the world origin, so the dome's height falls off
+// as sqrt(radius^2 - r^2) the further out you go. `embed` sinks the object
+// slightly into the surface the same way every other scene's placeOnSurface
+// does, so bases don't visibly float above the ground.
+function placeOnPlanet(object, dx, dz, embed = 0) {
+  const r = Math.sqrt(dx * dx + dz * dz);
+  const y = -PLANET_RADIUS + Math.sqrt(Math.max(0, PLANET_RADIUS * PLANET_RADIUS - r * r)) - embed;
+  object.position.set(dx, y, dz);
+  const normal = new THREE.Vector3(dx, y + PLANET_RADIUS, dz).normalize();
+  orientToNormal(object, normal, Math.random() * Math.PI * 2);
+}
+
+// Same asset files groundScene.js scatters across its forest — reused here
+// (not placeholders) so the cluster around the pad is recognizably "the
+// same kind of place" the player just walked through.
+const LAUNCH_SITE_FLORA = [
+  { url: '/assets/pine.glb', height: [4.0, 6.5] },
+  { url: '/assets/rock.glb', height: [0.8, 1.8] },
+  { url: '/assets/bush.glb', height: [0.6, 1.0] },
+  { url: '/assets/fern.glb', height: [0.4, 0.7] },
+];
+const LAUNCH_SITE_FLORA_COUNT = 16;
+
+async function scatterLaunchSiteLandmarks(scene) {
+  const tasks = [];
+  for (let i = 0; i < LAUNCH_SITE_FLORA_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 6 + Math.random() * 15; // clear of the pad, within a natural-looking cluster
+    const def = LAUNCH_SITE_FLORA[Math.floor(Math.random() * LAUNCH_SITE_FLORA.length)];
+    tasks.push((async () => {
+      try {
+        const [minH, maxH] = def.height;
+        const height = minH + Math.random() * (maxH - minH);
+        const instance = await loadDecoration(def.url, height);
+        placeOnPlanet(instance, Math.cos(angle) * dist, Math.sin(angle) * dist, 0.15);
+        scene.add(instance);
+      } catch (err) {
+        console.error(`Failed to place ${def.url} near the pad:`, err);
+      }
+    })());
+  }
+
+  // A house and the volcano — both distinctive enough from the ground level
+  // to be recognized at a glance even shrinking away below.
+  tasks.push((async () => {
+    try {
+      const house = await loadDecoration('/assets/house.glb', 6.0);
+      placeOnPlanet(house, 13, -11, 0.4);
+      scene.add(house);
+    } catch (err) {
+      console.error('Failed to place house near the pad:', err);
+    }
+  })());
+  tasks.push((async () => {
+    try {
+      const volcano = await loadDecoration('/assets/volcano.glb', 8.5);
+      placeOnPlanet(volcano, -22, 14, 0.3);
+      scene.add(volcano);
+    } catch (err) {
+      console.error('Failed to place volcano near the pad:', err);
+    }
+  })());
+
+  await Promise.all(tasks);
+}
+
 // Sky/fog fixed at "dark space" the whole climb, even right off the pad,
 // gave zero visual sense of actually leaving atmosphere — SPACE_COLOR is
 // the scene's original fixed color, ATMOSPHERE_COLOR is a bright daytime
@@ -118,14 +191,37 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
   ascentStars.material.fog = false;
   scene.add(ascentStars);
 
-  const earth = createEarth(EARTH_RADIUS);
-  earth.position.set(0, -EARTH_RADIUS, 0);
+  // The same planet the player just launched from (groundScene's own
+  // createPlanetGround, not a generic mismatched blue "Earth" sphere), at
+  // its actual small radius — tangent to the pad at y=0, so its surface
+  // reads as the actual ground curving away beneath you, shrinking into a
+  // distant ball as you climb rather than behaving like a real-scale planet.
+  const earth = createPlanetGround(PLANET_RADIUS);
+  earth.position.set(0, -PLANET_RADIUS, 0);
   scene.add(earth);
+
+  const earthAtmo = new THREE.Mesh(
+    new THREE.SphereGeometry(PLANET_RADIUS * 1.015, 48, 48),
+    new THREE.MeshBasicMaterial({
+      color: 0x6bb7e8, transparent: true, opacity: 0.1, side: THREE.BackSide,
+    }),
+  );
+  earthAtmo.position.copy(earth.position);
+  scene.add(earthAtmo);
 
   const padMat = new THREE.MeshStandardMaterial({ color: 0x555a66, metalness: 0.3, roughness: 0.7 });
   const pad = new THREE.Mesh(new THREE.CylinderGeometry(4, 4.5, 0.6, 24), padMat);
   pad.position.set(0, -0.3, 0);
   scene.add(pad);
+
+  // A handful of the ground level's own decorations (same asset files, not
+  // placeholders) scattered around the pad — the point of showing the
+  // actual small planet instead of a generic backdrop is that this reads as
+  // leaving the specific place the player just explored. Fire-and-forget:
+  // a slow/failed fetch here shouldn't block the launch from being playable.
+  scatterLaunchSiteLandmarks(scene).catch((err) => {
+    console.error('Failed to scatter launch-site landmarks:', err);
+  });
 
   const orbitRing = createOrbitRing(LANE_HALF_WIDTH + 3);
   orbitRing.position.y = ORBIT_ALTITUDE;
@@ -299,9 +395,11 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
   }
 
   // Shot A (0-35%): a close, low ignition shot near the engine as the ship
-  // first lifts off the pad. Shot B (35-100%): pulls back and blends into
-  // exactly the standard chase-cam framing updateCamera() uses, timed to
-  // land there right as control hands off — no camera pop at the switch.
+  // first lifts off the pad. Shot B (35-100%): bows out into a wide pull-back
+  // — the whole point of showing the actual small planet instead of a
+  // generic backdrop is wasted if the camera never pulls back far enough to
+  // see it — then eases back in to land exactly on the standard chase-cam
+  // framing updateCamera() uses, timed for zero camera pop at the handoff.
   function updateLiftoff(dt, elapsed, camera) {
     if (consumeInteractPress()) {
       liftoffElapsed = LIFTOFF_DURATION;
@@ -332,10 +430,27 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
       camera.lookAt(0, player.y + 0.6, 0);
     } else {
       const st = easeInOutCubic((t - 0.35) / 0.65);
-      const targetPos = new THREE.Vector3(player.x * 0.4, player.y - 3, 15);
+      const mt = 1 - st;
+      // Quadratic Bezier through a pulled-back, elevated control point —
+      // bows the shot out wide and high mid-transition (revealing the pad,
+      // the scattered landmarks, and the planet's curve) before easing back
+      // in to land precisely on updateCamera()'s framing at st=1.
       const fromPos = new THREE.Vector3(1.2, 0.4, 4.5);
-      camera.position.lerpVectors(fromPos, targetPos, st);
-      camera.lookAt(player.x * 0.4, player.y + 6, 0);
+      const revealPos = new THREE.Vector3(player.x * 0.4 + 10, player.y + 14, 26);
+      const targetPos = new THREE.Vector3(player.x * 0.4, player.y - 3, 15);
+      camera.position.set(0, 0, 0)
+        .addScaledVector(fromPos, mt * mt)
+        .addScaledVector(revealPos, 2 * mt * st)
+        .addScaledVector(targetPos, st * st);
+
+      const lookFrom = new THREE.Vector3(0, player.y + 0.6, 0);
+      const lookReveal = new THREE.Vector3(player.x * 0.4, -6, 0);
+      const lookTo = new THREE.Vector3(player.x * 0.4, player.y + 6, 0);
+      const lookTarget = new THREE.Vector3(0, 0, 0)
+        .addScaledVector(lookFrom, mt * mt)
+        .addScaledVector(lookReveal, 2 * mt * st)
+        .addScaledVector(lookTo, st * st);
+      camera.lookAt(lookTarget);
     }
 
     if (t >= 1) {
