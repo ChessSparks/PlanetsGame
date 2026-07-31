@@ -351,6 +351,12 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   let sentriesDisabled = false;
   let respawnGraceTimer = 0; // blocks new patrol->chase aggro for a moment after a respawn
   let lastElapsed = 0; // captured each frame so resetRun() can relocate sentries outside the normal update tick
+  // Set whenever the player-follow camera should jump straight to its target
+  // instead of lerping in — otherwise the lerp travels in a straight line
+  // between the old and new camera spots, which cuts underneath the sphere's
+  // surface (through the terrain/assets) whenever those spots are far apart,
+  // e.g. right after a respawn or when gameplay first picks up from the intro.
+  let snapCameraNext = true;
 
   function announce(text) {
     announceObjective(text);
@@ -363,6 +369,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     'Begin',
     () => {
       state = 'playing';
+      snapCameraNext = true;
       announce('Objective: find the map beacon.');
     },
   );
@@ -386,6 +393,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     // actually gives the player a moment to get their bearings.
     respawnGraceTimer = 2.5;
     state = 'playing';
+    snapCameraNext = true;
     announce('You were caught. Regrouping at the landing site.');
   }
 
@@ -739,7 +747,12 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     const camTarget = pos.clone()
       .addScaledVector(walker.forward, -CAM_DISTANCE)
       .addScaledVector(walker.normal, CAM_HEIGHT);
-    camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
+    if (snapCameraNext) {
+      camera.position.copy(camTarget);
+      snapCameraNext = false;
+    } else {
+      camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
+    }
     camera.up.copy(walker.normal);
     const lookTarget = pos.clone().addScaledVector(walker.normal, LOOK_HEIGHT);
     camera.lookAt(lookTarget);

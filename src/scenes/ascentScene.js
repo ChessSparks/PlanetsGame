@@ -321,7 +321,12 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
       const st = t / 0.35;
       camera.position.set(
         THREE.MathUtils.lerp(1.8, 1.2, st),
-        THREE.MathUtils.lerp(-0.6, 0.4, st),
+        // Was -0.6 at st=0 — below the pad's top surface (GROUND_Y=0) and
+        // right at/inside the pad mesh's underside (it spans y -0.6 to 0),
+        // which put the opening shot's camera underground looking up through
+        // the platform. 0.25 keeps the low, close-to-the-engine framing
+        // without dipping below the pad.
+        THREE.MathUtils.lerp(0.25, 0.4, st),
         THREE.MathUtils.lerp(3.2, 4.5, st),
       );
       camera.lookAt(0, player.y + 0.6, 0);

@@ -84,6 +84,16 @@ const MAP_CONSOLE_BLOCK_RADIUS = 1.1;
 const MAP_CONSOLE_INTERACT_RADIUS = 2.8;
 const CRYSTAL_PICKUP_RADIUS = 1.2;
 const EMBED = { ship: 0.5, rock: 0.12, console: 0.3 };
+const LANDING_PAD_RADIUS = SHIP_BLOCK_RADIUS;
+const LANDING_PAD_HEIGHT = 0.4;
+// Sinks the pad's base into the terrain so its rim doesn't float above the
+// curved surface — same idea as EMBED above, just deep enough to cover a
+// pad this wide.
+const LANDING_PAD_EMBED = 0.5;
+// How far below nominal MOON_RADIUS the pad's top surface actually sits —
+// used to place the ship (and anything else) "on the pad" the same way
+// EMBED places things directly on raw terrain.
+const LANDING_PAD_TOP_EMBED = LANDING_PAD_EMBED - LANDING_PAD_HEIGHT;
 
 function tangentBasis(normal) {
   const hint = Math.abs(normal.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
@@ -151,6 +161,33 @@ function createLandingFlame() {
 function createDustPuff() {
   const mat = new THREE.MeshBasicMaterial({ color: 0xcac2b8, transparent: true, opacity: 0.55 });
   return new THREE.Mesh(new THREE.SphereGeometry(0.35 + Math.random() * 0.25, 6, 6), mat);
+}
+
+// A built landing pad for the ship to touch down on, instead of the ship
+// just sinking straight into the raw terrain — a flat authored surface
+// reads as "landed on a platform" where bare embedding into the sphere
+// looked like the ship spawning half-buried underground.
+function createLandingPad() {
+  const group = new THREE.Group();
+
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x4a4d52, metalness: 0.6, roughness: 0.5 });
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(LANDING_PAD_RADIUS, LANDING_PAD_RADIUS * 1.08, LANDING_PAD_HEIGHT, 28),
+    baseMat,
+  );
+  base.position.y = LANDING_PAD_HEIGHT / 2;
+  base.receiveShadow = true;
+  group.add(base);
+
+  const ringMat = new THREE.MeshStandardMaterial({
+    color: 0x7bffb0, emissive: 0x2a6b4c, emissiveIntensity: 0.7, metalness: 0.3, roughness: 0.4,
+  });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(LANDING_PAD_RADIUS * 0.75, 0.1, 10, 48), ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = LANDING_PAD_HEIGHT + 0.02;
+  group.add(ring);
+
+  return group;
 }
 
 function createCrystal() {
@@ -270,8 +307,13 @@ export async function createMoonScene({ onComplete } = {}) {
   scene.add(astronaut.object3D);
   astronaut.fadeTo('Idle', { duration: 0 });
 
+  const landingPad = createLandingPad();
+  placeOnSurface(landingPad, SHIP_SPOT.normal, LANDING_PAD_EMBED);
+  orientToNormal(landingPad, SHIP_SPOT.normal, 0);
+  scene.add(landingPad);
+
   const ship = await loadDecoration('/assets/spaceship.glb', 6.5);
-  placeOnSurface(ship, SHIP_SPOT.normal, EMBED.ship);
+  placeOnSurface(ship, SHIP_SPOT.normal, EMBED.ship + LANDING_PAD_TOP_EMBED);
   orientToNormal(ship, SHIP_SPOT.normal, 0);
   const shipBasis = tangentBasis(SHIP_SPOT.normal);
   const shipRestPos = ship.position.clone();
@@ -324,6 +366,12 @@ export async function createMoonScene({ onComplete } = {}) {
   minimap.setVisible(false); // stays hidden until the landing cutscene ends
 
   let state = 'landing';
+  // Set whenever the player-follow camera should jump straight to its target
+  // instead of lerping in — otherwise the lerp travels in a straight line
+  // between the old and new camera spots, which cuts underneath the sphere's
+  // surface (through the terrain/assets) whenever those spots are far apart,
+  // e.g. right when gameplay first picks up from the landing cutscene.
+  let snapCameraNext = true;
   let landingElapsed = 0;
   let landingDone = false;
   let dustSpawned = false;
@@ -384,6 +432,7 @@ export async function createMoonScene({ onComplete } = {}) {
       'Begin',
       () => {
         state = 'playing';
+        snapCameraNext = true;
         announce('Objective: find the console and solve it to map the crystal deposits.');
       },
     );
@@ -606,7 +655,12 @@ export async function createMoonScene({ onComplete } = {}) {
     const camTarget = pos.clone()
       .addScaledVector(walker.forward, -CAM_DISTANCE)
       .addScaledVector(walker.normal, CAM_HEIGHT);
-    camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
+    if (snapCameraNext) {
+      camera.position.copy(camTarget);
+      snapCameraNext = false;
+    } else {
+      camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
+    }
     camera.up.copy(walker.normal);
     const lookTarget = pos.clone().addScaledVector(walker.normal, LOOK_HEIGHT);
     camera.lookAt(lookTarget);

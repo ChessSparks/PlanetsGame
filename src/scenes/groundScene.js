@@ -409,6 +409,12 @@ export async function createGroundScene({ onLaunch } = {}) {
   minimap.setVisible(false); // stays hidden until the crash cutscene ends
 
   let state = 'cutscene';
+  // Set whenever the player-follow camera should jump straight to its target
+  // instead of lerping in — otherwise the lerp travels in a straight line
+  // between the old and new camera spots, which cuts underneath the sphere's
+  // surface (through the terrain/assets) whenever those spots are far apart,
+  // e.g. right after a respawn or when gameplay first picks up from a cutscene.
+  let snapCameraNext = true;
   let cutsceneElapsed = 0;
   let cutsceneDone = false;
   let cutsceneFlashed = false;
@@ -454,6 +460,7 @@ export async function createGroundScene({ onLaunch } = {}) {
     }
     setKeysDisplay(0, keyPickups.length);
     state = 'playing';
+    snapCameraNext = true;
     announce('You were caught. Restarting the search — find the key finder first.');
   }
 
@@ -479,6 +486,7 @@ export async function createGroundScene({ onLaunch } = {}) {
         unlockAudio();
         startAmbientMusic();
         state = 'playing';
+        snapCameraNext = true;
         announce('This is Corthana, your ship\'s onboard AI — still online after the crash. Objective: find the key finder device nearby.');
       },
     );
@@ -867,7 +875,12 @@ export async function createGroundScene({ onLaunch } = {}) {
     const camTarget = pos.clone()
       .addScaledVector(walker.forward, -CAM_DISTANCE)
       .addScaledVector(walker.normal, CAM_HEIGHT);
-    camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
+    if (snapCameraNext) {
+      camera.position.copy(camTarget);
+      snapCameraNext = false;
+    } else {
+      camera.position.lerp(camTarget, 1 - Math.pow(0.001, dt));
+    }
     camera.up.copy(walker.normal);
     const lookTarget = pos.clone().addScaledVector(walker.normal, LOOK_HEIGHT);
     camera.lookAt(lookTarget);

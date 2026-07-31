@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { initInput } from './game/input.js';
 import { initTouchControls } from './game/touchControls.js';
 import {
-  showOverlay, showHud, hideKeysDisplay, setLoadingProgress, hideLoadingScreen, showLoadingScreen,
+  showOverlay, showHud, hideHud, hideKeysDisplay, setLoadingProgress, hideLoadingScreen, showLoadingScreen,
 } from './game/hud.js';
 import { showTitleScreen } from './game/titleScreen.js';
 import { initSettingsMenu } from './game/settingsMenu.js';
@@ -144,12 +144,40 @@ async function startMoonPhase() {
   hideLoadingScreen();
 }
 
+// Final overlay after the story's last choice plays out — offers a clean
+// restart instead of the game silently looping back into a new run the way
+// every earlier level transition does. Restart re-enters at the ground
+// phase directly (same entry point the title screen's Start button uses).
+function showEndingScreen() {
+  teardownActiveScene();
+  hideHud();
+  hideKeysDisplay();
+  showOverlay(
+    'Mission Complete',
+    'That\'s the end of the road for this run.\n\nYou can play through again whenever you\'re ready.',
+    'Restart',
+    () => {
+      showLoadingScreen();
+      startGroundPhase().catch((err) => {
+        console.error('Failed to start ground phase:', err);
+        hideLoadingScreen();
+        showOverlay(
+          'Something went wrong',
+          `The planet scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+          'Retry',
+          () => startGroundPhase().catch((e) => console.error(e)),
+        );
+      });
+    },
+  );
+}
+
 async function startClientWorldPhase() {
   camera.position.set(0, 30, 8);
   teardownActiveScene();
-  const returnTravelConfig = {
+  const endingTravelConfig = {
     fromLabel: "the Client's Homeworld",
-    toLabel: 'a New Assignment',
+    toLabel: 'Home',
     fromColor: '#8a6a4a',
     fromAccent: '#4a3626',
     toColor: '#7bc8ff',
@@ -157,19 +185,14 @@ async function startClientWorldPhase() {
     shotStyle: 'pullback',
     musicTheme: 'ground',
   };
-  const handleReturnTrip = () => startTravelPhase(returnTravelConfig, startGroundPhase).catch((err) => {
-    console.error('Failed to start ground phase:', err);
-    showOverlay(
-      'Something went wrong',
-      `The next scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
-      'Retry',
-      () => startGroundPhase().catch((e) => console.error(e)),
-    );
+  const handleEnding = () => startTravelPhase(endingTravelConfig, async () => showEndingScreen()).catch((err) => {
+    console.error('Failed to play the closing cutscene:', err);
+    showEndingScreen();
   });
   const { createClientWorldScene } = await import('./scenes/clientWorldScene.js');
   const clientWorld = await createClientWorldScene({
-    onDeliver: handleReturnTrip,
-    onRefuseEscape: handleReturnTrip,
+    onDeliver: handleEnding,
+    onRefuseEscape: handleEnding,
   });
   activeScene = clientWorld;
   hideLoadingScreen();

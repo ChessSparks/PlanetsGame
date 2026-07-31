@@ -5,20 +5,14 @@ import { isTouchDevice } from './touchControls.js';
 // assets needed). Silently does nothing if unsupported. Must be triggered
 // from a user gesture (e.g. a button click) for some browsers to allow it.
 //
-// Voice quality is entirely up to what the OS/browser ships — the classic
-// default voices (e.g. Windows' "Microsoft David/Zira") sound flatly
-// robotic, while newer cloud-backed "Online (Natural)" voices (Edge on
-// Windows 11) or platform voices like "Google US English"/"Samantha" sound
-// far more natural. This picks the best one available for Corthana, and
-// avoids the artificially low pitch that reads as synthetic.
-const CORTHANA_VOICE_NAMES = [
-  'Online (Natural)', // matches any "Microsoft <Name> Online (Natural)" voice (Edge/Windows 11)
-  'Google US English',
-  'Google UK English Female',
-  'Samantha',
-  'Microsoft Zira',
-  'Microsoft David',
-];
+// Voice quality and speaking rate are entirely up to what the OS/browser
+// ships, and different voices speak at very different paces even at the
+// same rate=1.0, which made Corthana sound slow on some devices and fast on
+// others depending on which voice happened to be picked. Locking to a
+// single voice keeps the pace consistent everywhere that voice exists
+// (Chrome/Chromium on any OS); devices without it fall back to the default
+// English voice below.
+const CORTHANA_VOICE_NAME = 'Google US English';
 
 let corthanaVoice = null;
 let voiceMuted = false;
@@ -34,19 +28,11 @@ export function setVoiceMuted(muted) {
   }
 }
 
-function pickVoiceFrom(names, voices) {
-  for (const name of names) {
-    const match = voices.find((v) => v.name.includes(name));
-    if (match) return match;
-  }
-  return null;
-}
-
 function refreshVoices() {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return;
-  corthanaVoice = pickVoiceFrom(CORTHANA_VOICE_NAMES, voices)
+  corthanaVoice = voices.find((v) => v.name.includes(CORTHANA_VOICE_NAME))
     || voices.find((v) => v.lang.startsWith('en')) || voices[0];
 }
 

@@ -66,6 +66,14 @@ html, body {
   justify-content: center;
 }
 
+#title-note {
+  font-size: 12px;
+  opacity: 0.55;
+  letter-spacing: 0.3px;
+  margin-top: 18px;
+  font-style: italic;
+}
+
 #title-start-btn {
   font-size: 17px;
   font-weight: 700;
@@ -911,6 +919,11 @@ html, body {
   #title-start-btn {
     font-size: 14px;
     padding: 12px 32px;
+  }
+
+  #title-note {
+    font-size: 11px;
+    margin-top: 14px;
   }
 
   #title-content {
