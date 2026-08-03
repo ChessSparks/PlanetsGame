@@ -148,15 +148,17 @@ async function startMoonPhase() {
 // A teaser card shown right before the Mission Complete/Restart screen —
 // hints at future missions/planets rather than just cutting straight to
 // "the end," so the story reads as paused rather than fully closed off.
+// Shown after Mission V (the Exchange) now, so it only teases what's still
+// unbuilt (VI-VIII) rather than V itself, which the player just played.
 function showToBeContinuedScreen() {
   teardownActiveScene();
   hideHud();
   hideKeysDisplay();
   showOverlay(
     'To Be Continued...',
-    'Corthana\'s still running diagnostics when the next contract comes through — encrypted, unsigned, already accepted.\n\n'
+    'The buyer\'s list is aboard, encrypted six ways from Sunday, but it\'s aboard.\n\n'
+    + 'Corthana\'s already parsing headers when the next contract lights up the console.\n\n'
     + 'Coming missions:\n\n'
-    + '— Mission V: The Buyer\'s List\n'
     + '— Mission VI: What the Crystals Remember\n'
     + '— Mission VII: The Next Quiet Planet\n'
     + '— Mission VIII: Reclamation\n\n'
@@ -199,24 +201,52 @@ async function startClientWorldPhase() {
   teardownActiveScene();
   const endingTravelConfig = {
     fromLabel: "the Client's Homeworld",
-    toLabel: 'Home',
+    toLabel: 'the Exchange',
     fromColor: '#8a6a4a',
     fromAccent: '#4a3626',
-    toColor: '#7bc8ff',
-    toAccent: '#3a6a99',
+    toColor: '#c47a56',
+    toAccent: '#7a4a30',
     shotStyle: 'pullback',
-    musicTheme: 'ground',
+    musicTheme: 'moon',
   };
-  const handleEnding = () => startTravelPhase(endingTravelConfig, async () => showToBeContinuedScreen()).catch((err) => {
+  const handleEscape = () => startTravelPhase(
+    endingTravelConfig,
+    () => startBuyersListPhase(),
+  ).catch((err) => {
     console.error('Failed to play the closing cutscene:', err);
-    showToBeContinuedScreen();
+    startBuyersListPhase().catch((e) => console.error(e));
   });
   const { createClientWorldScene } = await import('./scenes/clientWorldScene.js');
-  const clientWorld = await createClientWorldScene({
-    onDeliver: handleEnding,
-    onRefuseEscape: handleEnding,
-  });
+  const clientWorld = await createClientWorldScene({ onEscape: handleEscape });
   activeScene = clientWorld;
+  hideLoadingScreen();
+}
+
+// Mission V: the alien trade world where the buyer's list gets pulled from
+// 3 archive terminals. onComplete plays the closing cutscene into the
+// To-Be-Continued/Mission-Complete flow every other mission ends on, now
+// that this one is actually reachable through play instead of only the dev
+// switcher.
+async function startBuyersListPhase() {
+  camera.position.set(0, 25, 6.5);
+  teardownActiveScene();
+  const { createBuyersListScene } = await import('./scenes/buyersListScene.js');
+  const buyersList = await createBuyersListScene({
+    onComplete: () => startTravelPhase({
+      fromLabel: 'the Exchange',
+      toLabel: 'Home',
+      fromColor: '#c47a56',
+      fromAccent: '#7a4a30',
+      toColor: '#7bc8ff',
+      toAccent: '#3a6a99',
+      shotStyle: 'pullback',
+      musicTheme: 'ground',
+    }, async () => showToBeContinuedScreen()).catch((err) => {
+      console.error('Failed to play the closing cutscene:', err);
+      showToBeContinuedScreen();
+    }),
+  });
+  activeScene = buyersList;
   hideLoadingScreen();
 }
 
@@ -275,8 +305,11 @@ showTitleScreen({
 if (import.meta.env.DEV) {
   const panel = document.createElement('div');
   panel.id = 'dev-level-switcher';
-  // Hidden on the start screen and everywhere else by default — press the
-  // backtick key (`) to toggle it on when you actually need it.
+  // Hidden by default everywhere — the title screen, every cutscene, every
+  // level's own intro — rather than auto-showing itself the moment Start is
+  // clicked (which put it right on screen during the very first level's
+  // crash-landing cutscene). Purely opt-in now: press the backtick key (`)
+  // whenever it's actually wanted.
   panel.style.cssText = `
     position: fixed; bottom: 10px; left: 10px; z-index: 10000;
     display: none; gap: 6px; padding: 8px; border-radius: 8px;
@@ -320,6 +353,7 @@ if (import.meta.env.DEV) {
   addDevJumpButton('Ascent', () => startAscentPhase(10, 10));
   addDevJumpButton('Moon', () => startMoonPhase());
   addDevJumpButton('Client World', () => startClientWorldPhase());
+  addDevJumpButton('Buyer\'s List', () => startBuyersListPhase());
 
   document.body.appendChild(panel);
 }

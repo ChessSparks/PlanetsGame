@@ -58,6 +58,12 @@ const VOICE_CLIPS = {
     'davinci__all_crystal_deposits_collected__objective__return.mp3',
   'Breaking atmosphere. Hold steady.':
     'davinci__breaking_atmosphere__hold_steady__.mp3',
+  'Objective: find and activate the 3 alien computers.':
+    'fifth/davinci_objective__find_and_activate_the_3_alien_computers.mp3',
+  'Objective: recover the buyer\'s list.':
+    'fifth/davinci_objective__recover_the_buyer_s_list_.mp3',
+  'Objective: get back to the ship.':
+    'fifth/davinci_objective__get_back_to_the_ship_.mp3',
 };
 
 let currentClip = null;

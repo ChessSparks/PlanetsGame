@@ -62,6 +62,29 @@ function drawDroneIcon(ctx, x, y, size, color) {
   ctx.restore();
 }
 
+// A little document glyph (rectangle + ruled lines) for the buyer's-list
+// pickup once it's been generated.
+function drawListIcon(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.rect(-size * 0.7, -size, size * 1.4, size * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = Math.max(1, size * 0.22);
+  for (const ly of [-size * 0.4, 0, size * 0.4]) {
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.4, ly);
+    ctx.lineTo(size * 0.4, ly);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 // A GTA-style radar: player is always the fixed center arrow pointing "up"
 // (the direction they're facing); every blip is drawn at its position
 // relative to the player's own forward/right tangent vectors, so it rotates
@@ -122,6 +145,8 @@ export function createMinimap() {
         drawVolcanoIcon(ctx, px, py, (b.size || 6) * (offEdge ? 0.8 : 1), b.color);
       } else if (b.shape === 'drone') {
         drawDroneIcon(ctx, px, py, (b.size || 5) * (offEdge ? 0.8 : 1), b.color);
+      } else if (b.shape === 'list') {
+        drawListIcon(ctx, px, py, (b.size || 6) * (offEdge ? 0.8 : 1), b.color);
       } else {
         ctx.fillStyle = b.color;
         ctx.beginPath();

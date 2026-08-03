@@ -1,10 +1,11 @@
 export const keys = {
   up: false, down: false, left: false, right: false,
-  shift: false, interact: false, jump: false,
+  shift: false, interact: false, jump: false, roll: false,
 };
 
 let interactConsumed = false;
 let jumpConsumed = false;
+let rollConsumed = false;
 
 export function initInput() {
   window.addEventListener('keydown', (e) => {
@@ -14,6 +15,7 @@ export function initInput() {
     if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = true;
     if (e.code === 'KeyE') keys.interact = true;
+    if (e.code === 'KeyR') keys.roll = true;
     if (e.code === 'Space') {
       keys.jump = true;
       e.preventDefault(); // stop the page from scrolling on spacebar
@@ -26,6 +28,7 @@ export function initInput() {
     if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.shift = false;
     if (e.code === 'KeyE') keys.interact = false;
+    if (e.code === 'KeyR') keys.roll = false;
     if (e.code === 'Space') keys.jump = false;
   });
 }
@@ -47,5 +50,16 @@ export function consumeJumpPress() {
     return true;
   }
   if (!keys.jump) jumpConsumed = false;
+  return false;
+}
+
+// Same one-shot-per-press behavior for the (purely cosmetic — no gameplay
+// effect) Roll flourish, so holding R doesn't replay it every frame.
+export function consumeRollPress() {
+  if (keys.roll && !rollConsumed) {
+    rollConsumed = true;
+    return true;
+  }
+  if (!keys.roll) rollConsumed = false;
   return false;
 }

@@ -249,6 +249,70 @@ export function createForgeGround(radius) {
   return sphere;
 }
 
+function makeAlienGroundTexture() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#2a1638';
+  ctx.fillRect(0, 0, size, size);
+
+  const patchColors = ['#341a42', '#22102e', '#3c1f4c', '#1a0c24'];
+  for (let i = 0; i < 260; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 6 + Math.random() * 22;
+    ctx.fillStyle = patchColors[i % patchColors.length];
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.7, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Bioluminescent veins — thin glowing teal cracks, this world's answer to
+  // the client world's molten-orange ones, but cold/alive instead of hot.
+  for (let i = 0; i < 26; i++) {
+    let x = Math.random() * size;
+    let y = Math.random() * size;
+    ctx.strokeStyle = 'rgba(80,255,220,0.85)';
+    ctx.lineWidth = 1.2 + Math.random();
+    ctx.shadowColor = 'rgba(80,255,220,0.9)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    const segments = 4 + Math.floor(Math.random() * 4);
+    for (let s = 0; s < segments; s++) {
+      x += (Math.random() - 0.5) * 60;
+      y += (Math.random() - 0.5) * 60;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 3);
+  return texture;
+}
+
+// Mission V's alien world — same walkable-sphere convention as
+// createPlanetGround/createMoonGround/createForgeGround, but violet/plum
+// soil with glowing bioluminescent veins instead of grass, craters, or
+// molten cracks — reads as unmistakably foreign at a glance.
+export function createAlienGround(radius) {
+  const texture = makeAlienGroundTexture();
+  const mat = new THREE.MeshStandardMaterial({ map: texture, color: 0x5a4570, roughness: 0.9, metalness: 0.05 });
+  const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 96, 96), mat);
+  sphere.receiveShadow = true;
+  sphere.userData.radius = radius;
+  return sphere;
+}
+
 export function createFuelCell() {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({

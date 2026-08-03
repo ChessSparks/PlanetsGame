@@ -419,15 +419,18 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
       const st = t / 0.35;
       camera.position.set(
         THREE.MathUtils.lerp(1.8, 1.2, st),
-        // Was -0.6 at st=0 — below the pad's top surface (GROUND_Y=0) and
-        // right at/inside the pad mesh's underside (it spans y -0.6 to 0),
-        // which put the opening shot's camera underground looking up through
-        // the platform. 0.25 keeps the low, close-to-the-engine framing
-        // without dipping below the pad.
-        THREE.MathUtils.lerp(0.25, 0.4, st),
-        THREE.MathUtils.lerp(3.2, 4.5, st),
+        // Was 0.25 at st=0 — close to the pad and aimed at the ship's base
+        // (see the lookAt below), which framed the hull's underside/engine
+        // dead ahead from a low, tight angle. 1.4 lifts the shot to roughly
+        // mid-hull height so the opening beat reads as a side angle on the
+        // ship, not a shot up its belly.
+        THREE.MathUtils.lerp(1.4, 1.6, st),
+        THREE.MathUtils.lerp(3.6, 4.8, st),
       );
-      camera.lookAt(0, player.y + 0.6, 0);
+      // Was player.y + 0.6 — low on a SHIP_HEIGHT=3.6 hull, right at the
+      // engine/exhaust. Aiming higher, near the hull's midpoint, keeps this
+      // a framing shot of the ship rather than a look up its underside.
+      camera.lookAt(0, player.y + 2.0, 0);
     } else {
       const st = easeInOutCubic((t - 0.35) / 0.65);
       const mt = 1 - st;
@@ -435,7 +438,9 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
       // bows the shot out wide and high mid-transition (revealing the pad,
       // the scattered landmarks, and the planet's curve) before easing back
       // in to land precisely on updateCamera()'s framing at st=1.
-      const fromPos = new THREE.Vector3(1.2, 0.4, 4.5);
+      // fromPos/lookFrom match shot A's values at t=0.35 exactly (see
+      // above) so the handoff between the two shots doesn't pop.
+      const fromPos = new THREE.Vector3(1.2, 1.6, 4.8);
       const revealPos = new THREE.Vector3(player.x * 0.4 + 10, player.y + 14, 26);
       const targetPos = new THREE.Vector3(player.x * 0.4, player.y - 3, 15);
       camera.position.set(0, 0, 0)
@@ -443,7 +448,7 @@ export async function createAscentScene({ startFuel = FUEL_MAX, onRestart, onOrb
         .addScaledVector(revealPos, 2 * mt * st)
         .addScaledVector(targetPos, st * st);
 
-      const lookFrom = new THREE.Vector3(0, player.y + 0.6, 0);
+      const lookFrom = new THREE.Vector3(0, player.y + 2.0, 0);
       const lookReveal = new THREE.Vector3(player.x * 0.4, -6, 0);
       const lookTo = new THREE.Vector3(player.x * 0.4, player.y + 6, 0);
       const lookTarget = new THREE.Vector3(0, 0, 0)

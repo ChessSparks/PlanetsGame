@@ -831,6 +831,451 @@ html, body {
   filter: brightness(1.2);
 }
 
+/* --- Data Fragments puzzle (buyers-list alien computers) ---------------- */
+#memorymatch-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 2, 14, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#memorymatch-overlay.hidden {
+  display: none;
+}
+
+#memorymatch-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(18, 8, 22, 0.95);
+  border: 1px solid rgba(255, 90, 208, 0.35);
+  box-shadow: 0 0 40px rgba(255, 90, 208, 0.2);
+}
+
+#memorymatch-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#memorymatch-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 18px;
+  max-width: 280px;
+}
+
+#memorymatch-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 56px);
+  grid-template-rows: repeat(3, 56px);
+  gap: 6px;
+  margin: 0 auto 18px;
+}
+
+.memorymatch-card {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 90, 208, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  font-size: 22px;
+  color: #4affd8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.memorymatch-card.memorymatch-up {
+  background: rgba(255, 90, 208, 0.14);
+  border-color: rgba(255, 90, 208, 0.5);
+}
+
+.memorymatch-card.memorymatch-matched {
+  background: rgba(74, 255, 216, 0.15);
+  border-color: rgba(74, 255, 216, 0.6);
+  color: #4affd8;
+  cursor: default;
+}
+
+#memorymatch-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#memorymatch-close:hover {
+  filter: brightness(1.2);
+}
+
+/* --- Signal Maze puzzle (buyers-list alien computers) -------------------- */
+#signalmaze-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 10, 12, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#signalmaze-overlay.hidden {
+  display: none;
+}
+
+#signalmaze-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(8, 18, 18, 0.95);
+  border: 1px solid rgba(74, 255, 216, 0.35);
+  box-shadow: 0 0 40px rgba(74, 255, 216, 0.2);
+}
+
+#signalmaze-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#signalmaze-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 18px;
+  max-width: 280px;
+}
+
+#signalmaze-grid {
+  position: relative;
+  margin: 0 auto 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.signalmaze-wall,
+.signalmaze-floor {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.signalmaze-wall {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.signalmaze-floor {
+  background: transparent;
+}
+
+.signalmaze-floor.signalmaze-dot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #4affd8;
+  box-shadow: 0 0 3px 1px rgba(74, 255, 216, 0.8);
+  transform: translate(-50%, -50%);
+}
+
+/* The power pellet — a cherry, not a plain dot, so "eat the cherry to eat
+   the ghosts" reads clearly at a glance. */
+.signalmaze-floor.signalmaze-pellet::after {
+  content: '🍒';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-size: 14px;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  animation: signalmaze-pellet-pulse 0.8s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 3px rgba(255, 90, 208, 0.9));
+}
+
+@keyframes signalmaze-pellet-pulse {
+  from { opacity: 0.7; transform: translate(-50%, -50%) scale(0.85); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+}
+
+.signalmaze-entity {
+  position: absolute;
+  transition: left 0.12s linear, top 0.12s linear, transform 0.12s linear;
+  z-index: 2;
+}
+
+.signalmaze-pacman {
+  background: #ffe45c;
+  border-radius: 50%;
+  clip-path: polygon(50% 50%, 100% 15%, 100% 0%, 0% 0%, 0% 100%, 100% 100%, 100% 85%, 50% 50%);
+  box-shadow: 0 0 6px 1px rgba(255, 228, 92, 0.6);
+}
+
+.signalmaze-ghost-el {
+  position: absolute;
+  background: var(--ghost-color, #ff5a5a);
+  border-radius: 50% 50% 20% 20%;
+  box-shadow: 0 0 6px 1px rgba(255, 255, 255, 0.25);
+}
+
+.signalmaze-ghost-el::before,
+.signalmaze-ghost-el::after {
+  content: '';
+  position: absolute;
+  top: 32%;
+  width: 4px;
+  height: 4px;
+  background: #0a0a12;
+  border-radius: 50%;
+}
+
+.signalmaze-ghost-el::before {
+  left: 26%;
+}
+
+.signalmaze-ghost-el.signalmaze-frightened {
+  background: #3a5fff;
+  filter: brightness(1.4);
+}
+
+.signalmaze-ghost-el::after {
+  left: 62%;
+}
+
+#signalmaze-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+#signalmaze-lives {
+  font-size: 15px;
+  letter-spacing: 2px;
+  color: #ff5a5a;
+  text-shadow: 0 0 6px rgba(255, 90, 90, 0.6);
+}
+
+#signalmaze-count {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+#signalmaze-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#signalmaze-close:hover {
+  filter: brightness(1.2);
+}
+
+/* --- Signal Drift puzzle (buyers-list alien computers, flappy-bird clone) */
+/* The terminal chrome (overlay/box/close button) matches every sibling
+   puzzle's convention, but the field itself is a straight Flappy Bird
+   look — sky, clouds, a scrolling ground, green piped, a yellow bird —
+   rather than the sci-fi reskin the other two puzzles use. */
+#flappybird-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 10, 16, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#flappybird-overlay.hidden {
+  display: none;
+}
+
+#flappybird-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(10, 18, 22, 0.95);
+  border: 1px solid rgba(100, 210, 220, 0.35);
+  box-shadow: 0 0 40px rgba(100, 210, 220, 0.2);
+}
+
+#flappybird-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#flappybird-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 14px;
+  max-width: 280px;
+}
+
+#flappybird-field {
+  position: relative;
+  max-width: 100%;
+  margin: 0 auto 12px;
+  background: linear-gradient(180deg, #4ec0ca 0%, #8fdbe4 70%, #bdedee 100%);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.flappybird-cloud {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 50% / 100%;
+  pointer-events: none;
+}
+
+.flappybird-cloud-a { width: 70px; height: 26px; top: 30px; left: 20px; }
+.flappybird-cloud-b { width: 50px; height: 20px; top: 90px; left: 190px; }
+.flappybird-cloud-c { width: 60px; height: 22px; top: 190px; left: 40px; }
+
+#flappybird-ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-top: 4px solid #6adf6a;
+  background: repeating-linear-gradient(
+    90deg, #dcbf6b 0px, #dcbf6b 20px, #cda852 20px, #cda852 40px
+  );
+  animation: flappybird-ground-scroll 0.8s linear infinite;
+}
+
+@keyframes flappybird-ground-scroll {
+  from { background-position-x: 0; }
+  to { background-position-x: -40px; }
+}
+
+#flappybird-bird {
+  position: absolute;
+  background: #ffd23f;
+  border: 2px solid #d99a1e;
+  border-radius: 50% 50% 50% 20% / 55% 55% 45% 45%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* Eye — a static white disc with a dark pupil baked in via radial-gradient,
+   rather than a separate pupil element (only ::before/::after are free). */
+#flappybird-bird::before {
+  content: '';
+  position: absolute;
+  top: 15%;
+  right: 12%;
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 65% 40%, #1a1a1a 0 22%, transparent 23%),
+    #fff;
+}
+
+/* Wing — the part that gets the flap-beat animation, kept on a pseudo-
+   element specifically so its transform never fights the bird's own
+   rotation tilt (set every frame via inline style on the real element). */
+#flappybird-bird::after {
+  content: '';
+  position: absolute;
+  bottom: 15%;
+  left: 8%;
+  width: 55%;
+  height: 40%;
+  background: #f5a623;
+  border: 1.5px solid #c97f10;
+  border-radius: 50%;
+  transform-origin: top center;
+}
+
+#flappybird-bird.flappybird-flapping::after {
+  animation: flappybird-wing-flap 0.22s ease;
+}
+
+@keyframes flappybird-wing-flap {
+  0% { transform: rotate(0deg); }
+  40% { transform: rotate(-50deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.flappybird-beak {
+  position: absolute;
+  top: 42%;
+  right: -22%;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 10px solid #ff8c1a;
+}
+
+.flappybird-pipe {
+  position: absolute;
+  background: linear-gradient(90deg, #7ed957 0%, #5cb838 55%, #4a9e2b 100%);
+  border: 2px solid #2f6e1c;
+  box-sizing: border-box;
+}
+
+.flappybird-pipe-top::after,
+.flappybird-pipe-bottom::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  height: 18px;
+  background: linear-gradient(90deg, #8bea62 0%, #66c440 55%, #52a930 100%);
+  border: 2px solid #2f6e1c;
+  box-sizing: border-box;
+}
+
+.flappybird-pipe-top::after { bottom: -2px; }
+.flappybird-pipe-bottom::after { top: -2px; }
+
+#flappybird-count {
+  font-size: 13px;
+  opacity: 0.8;
+  margin-bottom: 14px;
+}
+
+#flappybird-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#flappybird-close:hover {
+  filter: brightness(1.2);
+}
+
 /* --- On-screen touch controls (mobile/touch-primary devices only) ------- */
 /* z-index 25 sits above the bare canvas but below every overlay (30+), so a
    full-screen modal (puzzle/settings/dialogue) automatically covers and
@@ -964,7 +1409,10 @@ html, body {
   #puzzle-box,
   #circuit-box,
   #cipher-box,
-  #starchart-box {
+  #starchart-box,
+  #memorymatch-box,
+  #signalmaze-box,
+  #flappybird-box {
     max-width: 92vw;
     padding: 20px 18px;
   }
@@ -973,11 +1421,13 @@ html, body {
     font-size: 20px;
   }
 
-  #puzzle-box h1, #circuit-box h1, #cipher-box h1, #starchart-box h1, #settings-box h1 {
+  #puzzle-box h1, #circuit-box h1, #cipher-box h1, #starchart-box h1, #settings-box h1, #memorymatch-box h1,
+  #signalmaze-box h1, #flappybird-box h1 {
     font-size: 18px;
   }
 
-  #message-box p, #choice-box p, #puzzle-box p, #circuit-box p, #cipher-box p, #starchart-box p {
+  #message-box p, #choice-box p, #puzzle-box p, #circuit-box p, #cipher-box p, #starchart-box p, #memorymatch-box p,
+  #signalmaze-box p, #flappybird-box p {
     font-size: 12.5px;
   }
 

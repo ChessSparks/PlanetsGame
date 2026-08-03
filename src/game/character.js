@@ -74,11 +74,26 @@ export async function loadAstronaut(url = '/assets/Astronaut.glb') {
     }
   }
 
+  // A one-shot animation (Interact, Roll, ...) that fades back to Idle on
+  // its own once it finishes — the shared shape every "play this gesture,
+  // then go back to standing around" call site across every scene needs,
+  // pulled out here instead of each scene re-writing the same
+  // fadeTo(name, { loop: false, onFinished: () => fadeTo('Idle', ...) })
+  // block by hand.
+  function playFlourish(name, { duration = 0.15, returnDuration = 0.2 } = {}) {
+    fadeTo(name, {
+      duration,
+      loop: false,
+      onFinished: () => fadeTo('Idle', { duration: returnDuration }),
+    });
+  }
+
   return {
     object3D: wrapper,
     mixer,
     actions,
     fadeTo,
+    playFlourish,
     modelForwardOffset: MODEL_FORWARD_OFFSET,
     update(dt) {
       mixer.update(dt);

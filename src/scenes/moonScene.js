@@ -5,7 +5,9 @@ import {
 import { loadAstronaut } from '../game/character.js';
 import { loadDecoration } from '../game/models.js';
 import { createPlanetWalker, fibonacciSphere, orientToNormal } from '../game/planet.js';
-import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
+import {
+  keys, consumeInteractPress, consumeJumpPress, consumeRollPress,
+} from '../game/input.js';
 import {
   hideHud, showOverlay, flashToast, announceObjective,
 } from '../game/hud.js';
@@ -555,10 +557,7 @@ export async function createMoonScene({ onComplete } = {}) {
         scene.remove(crystal.mesh);
         crystalsCollected += 1;
         playPickupChime();
-        astronaut.fadeTo('Interact', {
-          duration: 0.15, loop: false,
-          onFinished: () => astronaut.fadeTo('Idle', { duration: 0.2 }),
-        });
+        astronaut.playFlourish('Interact');
         if (crystalsCollected >= crystalPickups.length) {
           announce('All crystal deposits collected. Objective: return to the ship and press E.');
         } else {
@@ -566,6 +565,11 @@ export async function createMoonScene({ onComplete } = {}) {
         }
       }
     }
+  }
+
+  // Purely cosmetic — no gameplay effect, just a flourish for the fun of it.
+  function updateRoll() {
+    if (consumeRollPress()) astronaut.playFlourish('Roll', { duration: 0.1, returnDuration: 0.25 });
   }
 
   // A single consumeInteractPress() per frame is shared across both
@@ -587,6 +591,7 @@ export async function createMoonScene({ onComplete } = {}) {
   }
 
   function handleShipInteract() {
+    astronaut.playFlourish('Interact');
     if (!mapSolved) {
       flashToast('Find the console and map the crystal deposits first.', 2400);
       return;
@@ -605,6 +610,7 @@ export async function createMoonScene({ onComplete } = {}) {
   }
 
   function handleConsoleInteract() {
+    astronaut.playFlourish('Interact');
     if (mapSolved) {
       flashToast('The console has nothing left to show you.', 1800);
       return;
@@ -686,6 +692,7 @@ export async function createMoonScene({ onComplete } = {}) {
         updateMovement(dt);
         updateCrystalPickups(dt);
         updateInteract();
+        updateRoll();
       }
       astronaut.update(dt);
       updateCamera(dt, camera);

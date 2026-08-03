@@ -6,7 +6,9 @@ import { loadAstronaut } from '../game/character.js';
 import { loadDecoration, loadAnimatedDecoration } from '../game/models.js';
 import { loadDroneTemplate, cloneDrone } from '../game/droneModel.js';
 import { createPlanetWalker, fibonacciSphere, orientToNormal } from '../game/planet.js';
-import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
+import {
+  keys, consumeInteractPress, consumeJumpPress, consumeRollPress,
+} from '../game/input.js';
 import {
   hideHud, showOverlay, flashToast, setKeysDisplay, announceObjective, flashScreenWhite,
 } from '../game/hud.js';
@@ -644,10 +646,7 @@ export async function createGroundScene({ onLaunch } = {}) {
       spawnKeys();
       playPickupChime();
       flashToast('Key finder acquired!', 2000);
-      astronaut.fadeTo('Interact', {
-        duration: 0.15, loop: false,
-        onFinished: () => astronaut.fadeTo('Idle', { duration: 0.2 }),
-      });
+      astronaut.playFlourish('Interact');
       announce('Key finder online. Objective: find the 3 parts hidden across the planet.');
     }
   }
@@ -714,6 +713,11 @@ export async function createGroundScene({ onLaunch } = {}) {
     }
   }
 
+  // Purely cosmetic — no gameplay effect, just a flourish for the fun of it.
+  function updateRoll() {
+    if (consumeRollPress()) astronaut.playFlourish('Roll', { duration: 0.1, returnDuration: 0.25 });
+  }
+
   // A single consumeInteractPress() per frame is shared across both
   // interactables (ship and small volcano) — calling it twice would silently
   // drop whichever check ran second, since the press is one-shot.
@@ -733,6 +737,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   }
 
   function handleShipInteract() {
+    astronaut.playFlourish('Interact');
     if (shipRepaired && fuelSecured) {
       onLaunch?.(1, 1);
       return;
@@ -758,6 +763,7 @@ export async function createGroundScene({ onLaunch } = {}) {
   }
 
   function handleFuelPuzzleInteract() {
+    astronaut.playFlourish('Interact');
     if (fuelSecured) {
       flashToast('Fuel cell already secured.', 1800);
       return;
@@ -999,6 +1005,7 @@ export async function createGroundScene({ onLaunch } = {}) {
         if (state === 'playing') updateFinderPickup();
         if (state === 'playing') updateKeyPickups(dt);
         if (state === 'playing') updateInteract();
+        if (state === 'playing') updateRoll();
         updateCamera(dt, camera);
       }
       astronaut.update(dt);

@@ -7,9 +7,11 @@ import { loadAstronaut } from '../game/character.js';
 import { loadDecoration } from '../game/models.js';
 import { loadSentryTemplate, cloneDrone } from '../game/droneModel.js';
 import { createPlanetWalker, fibonacciSphere, orientToNormal } from '../game/planet.js';
-import { keys, consumeInteractPress, consumeJumpPress } from '../game/input.js';
 import {
-  hideHud, showOverlay, showChoiceOverlay, flashToast, announceObjective,
+  keys, consumeInteractPress, consumeJumpPress, consumeRollPress,
+} from '../game/input.js';
+import {
+  hideHud, showOverlay, flashToast, announceObjective,
 } from '../game/hud.js';
 import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
@@ -21,7 +23,7 @@ import { showCipherPuzzle } from '../game/cipherPuzzle.js';
 
 // The biggest level in the game — the client's homeworld. A long, dangerous
 // walk from the landing site to the spire, through an industrial district,
-// guarded by sentries that only turn hostile once you've made your choice.
+// guarded by sentries that only turn hostile once you've refused the client.
 const PLANET_RADIUS = 32;
 
 const WALK_SPEED = 3.2;
@@ -151,24 +153,36 @@ function hitsObstacle(normal, obstacles, bodyRadius = PLAYER_COLLISION_RADIUS) {
 // blocked step, try sliding along the obstacle's tangent (both directions)
 // before giving up and holding position, so drones route around buildings
 // instead of just freezing at the wall.
+// Every exit path re-anchors pos to `target`'s own distance from the planet's
+// center (constant per call — playerNormal/orbitPosition's outputs both sit
+// at a fixed radius, see their own callers) rather than trusting whatever
+// magnitude the Cartesian moveToward/slide math above happened to land on.
+// Without this, repeatedly sliding along a building's tangent near a
+// patrol/chase path's edge drifts pos inward step by step with nothing ever
+// pulling it back out — over enough frames hugging a wall a sentry would
+// visibly sink into the terrain instead of flying past it.
 function stepAvoidingObstacles(pos, target, maxStep, obstacles, bodyRadius) {
+  const flightRadius = target.length();
+  const snapToAltitude = () => pos.normalize().multiplyScalar(flightRadius);
   const prev = pos.clone();
   moveToward(pos, target, maxStep);
-  if (!hitsObstacle(pos.clone().normalize(), obstacles, bodyRadius)) return;
+  if (!hitsObstacle(pos.clone().normalize(), obstacles, bodyRadius)) { snapToAltitude(); return; }
 
   pos.copy(prev);
   const toTarget = new THREE.Vector3().subVectors(target, prev);
-  if (toTarget.lengthSq() < 1e-6) return;
+  if (toTarget.lengthSq() < 1e-6) { snapToAltitude(); return; }
   const outward = prev.clone().normalize();
   const perp = new THREE.Vector3().crossVectors(toTarget, outward).normalize();
   for (const dir of [perp, perp.clone().negate()]) {
     const candidate = prev.clone().addScaledVector(dir, maxStep);
     if (!hitsObstacle(candidate.clone().normalize(), obstacles, bodyRadius)) {
       pos.copy(candidate);
+      snapToAltitude();
       return;
     }
   }
   // Boxed in on both sides — hold position rather than clip through.
+  snapToAltitude();
 }
 
 function orbitPosition(sentry, elapsed, target = new THREE.Vector3()) {
@@ -232,7 +246,7 @@ function createMapBeacon() {
   return group;
 }
 
-export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {}) {
+export async function createClientWorldScene({ onEscape } = {}) {
   hideHud();
   playMusicTheme('client');
   playAmbience('client');
@@ -342,8 +356,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
 
   let state = 'intro';
   let mapSolved = false;
-  let choiceMade = false;
-  let delivered = false;
+  let spireResolved = false;
   let sentriesActive = false;
   let sentriesDisabled = false;
   let respawnGraceTimer = 0; // blocks new patrol->chase aggro for a moment after a respawn
@@ -479,32 +492,33 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     playDroneAlert();
   }
 
+  // No real choice anymore — refusing is the only path, so this plays
+  // straight through from the reveal to the alarms going off instead of
+  // stopping at a decision point. Corthana gets ahead of it rather than the
+  // player picking "Refuse" off a menu: she already knows what the answer
+  // has to be before the client's even finished asking.
   function playReveal() {
     const screens = [
       {
-        title: 'The Spire',
-        body: 'The doors part before you reach them. Whoever runs this place already knows you\'re here.\n\nA voice resolves out of the static — pleasant, untroubled, entirely too relaxed for what it\'s about to say.',
-      },
-      {
         title: 'The Client',
-        body: '"You found them. Good. I wasn\'t certain you would."\n\nCorthana, tight in your ear: "Ask them what the crystals are for. Ask them now."',
+        body: 'The doors part before you reach them. A voice resolves out of the static — pleasant, untroubled, entirely too relaxed for what it\'s about to say.\n\n"You found them. Good."\n\nCorthana, tight in your ear: "Ask them what the crystals are for."',
       },
       {
         title: 'What They\'re For',
-        body: '"A weapon," the voice says, without hesitation, without shame. "Every non-plant life-sign in this system. Gone quietly, from orbit. No war. No warning."\n\nCorthana: "...The first planet. It was already quiet when we landed. Except for the plant life."\n\nThis isn\'t the first time they\'ve done this.',
+        body: '"A weapon," the voice says, without hesitation. "Every non-plant life-sign in this system. Gone quietly, from orbit."\n\nCorthana: "...The first planet. It was already quiet when we landed. Except for the plant life."\n\nThis isn\'t the first time they\'ve done this.',
+      },
+      {
+        title: 'Refused',
+        body: 'Corthana doesn\'t wait. "Don\'t give them the crystals." You weren\'t going to.\n\n"No." A pause — the kind that means the answer registered as a mistake, not a negotiation.\n\nThen the alarms start.',
       },
     ];
     let i = 0;
     function next() {
       if (i >= screens.length) {
-        showChoiceOverlay(
-          'Your Call',
-          'The crystals are yours to give. Corthana is quiet, waiting for you to decide.',
-          [
-            { label: 'Hand over the crystals', danger: true, onSelect: () => resolveChoice(true) },
-            { label: 'Refuse', onSelect: () => resolveChoice(false) },
-          ],
-        );
+        spireResolved = true;
+        activateSentries();
+        state = 'playing';
+        announce('Objective: shut down the sentries at the control tower, then get to the ship.');
         return;
       }
       const s = screens[i++];
@@ -513,77 +527,36 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     next();
   }
 
-  // Stays out of 'playing' through both cutscenes and their result screens —
-  // otherwise a player who interacts with the ship in the split second
-  // before clicking Continue could reach handleShipInteract() (already
-  // unlocked by choiceMade) before activateSentries() ever runs below,
-  // skipping the sentries/control-tower act entirely.
-  function showChoiceResultScreen(handedOver) {
-    const screen = handedOver
-      ? {
-        title: 'Delivered',
-        body: 'You hand over the case. The client doesn\'t thank you — there\'s no reason to. Payment clears before you\'ve even turned around.\n\nThen the alarms start. Apparently "no loose ends" applies to the courier too.',
-      }
-      : {
-        title: 'Refused',
-        body: 'You don\'t hand over anything. For a moment the voice just sounds mildly disappointed.\n\nThen the alarms start.',
-      };
-    showOverlay(screen.title, screen.body, 'Continue', () => {
-      activateSentries();
-      state = 'playing';
-      announce('Objective: shut down the sentries at the control tower, then get to the ship.');
-    });
-  }
-
-  function resolveChoice(handedOver) {
-    delivered = handedOver;
-    choiceMade = true;
-    showChoiceResultScreen(handedOver);
-  }
-
+  // No "THE END" card here anymore — this used to close the whole story out
+  // right after this level, which stopped making sense once later missions
+  // (starting with the buyer's list run) actually follow it. The real
+  // closing beat now plays at the end of whichever mission is currently
+  // last (see buyersListScene.js's own resolveEnding) instead of being
+  // stapled to this one specific level.
   function resolveEnding() {
     state = 'ending';
-    const screens = delivered
-      ? [
-        {
-          title: 'Some Time Later',
-          body: 'The relay lights up somewhere behind you, silent at this distance. You don\'t see it happen. You don\'t need to.\n\nSomewhere out there, another planet just went quiet.',
-        },
-      ]
-      : [
-        {
-          title: 'Liftoff',
-          body: 'You clear the hatch just as the first shots go wide. The ship claws up through their air, alarms screaming, and then — nothing. Just stars.',
-        },
-        {
-          title: 'Aftermath',
-          body: 'The crystals are still in the hold. Whatever they were worth, it wasn\'t worth this.\n\nCorthana, quietly: "For what it\'s worth — I think you did the right thing."',
-        },
-      ];
-    const finalScreen = delivered
-      ? {
-        title: 'THE END',
-        body: 'You got paid. You got the ship running. You got exactly what you came for.\n\nThat\'s the whole problem.',
-      }
-      : {
-        title: 'THE END',
-        body: 'You didn\'t deliver the weapon. You don\'t know what happens to the people who were counting on it. You didn\'t get paid.\n\nYou got to keep being someone you could live with.',
-      };
-    const onFinish = delivered ? onDeliver : onRefuseEscape;
+    const screens = [
+      {
+        title: 'Liftoff',
+        body: 'You clear the hatch just as the first shots go wide. The ship claws up through their air, alarms screaming, and then — nothing. Just stars.\n\nThe crystals are still in the hold. Whatever they were worth, it wasn\'t worth this.\n\nCorthana, quietly: "For what it\'s worth — I think you did the right thing."',
+      },
+    ];
     let i = 0;
     function next() {
       if (i >= screens.length) {
-        showOverlay(finalScreen.title, finalScreen.body, 'Depart', () => onFinish?.());
+        onEscape?.();
         return;
       }
       const s = screens[i++];
-      showOverlay(s.title, s.body, 'Continue', next);
+      const isLast = i >= screens.length;
+      showOverlay(s.title, s.body, isLast ? 'Depart' : 'Continue', next);
     }
     next();
   }
 
   function handleShipInteract() {
-    if (!choiceMade) {
+    astronaut.playFlourish('Interact');
+    if (!spireResolved) {
       flashToast('The ship isn\'t going anywhere until you\'ve dealt with the spire.', 2400);
       return;
     }
@@ -595,16 +568,18 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   }
 
   function handleSpireInteract() {
+    astronaut.playFlourish('Interact');
     if (!mapSolved) {
       flashToast('No idea where you\'re even going — find the map beacon first.', 2400);
       return;
     }
-    if (choiceMade) return;
+    if (spireResolved) return;
     state = 'dialogue';
     playReveal();
   }
 
   function handleMapConsoleInteract() {
+    astronaut.playFlourish('Interact');
     if (mapSolved) {
       flashToast('The beacon has nothing left to show you.', 1800);
       return;
@@ -625,6 +600,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
   }
 
   function handleControlTowerInteract() {
+    astronaut.playFlourish('Interact');
     if (!sentriesActive) {
       flashToast('Nothing to override here yet.', 2000);
       return;
@@ -649,6 +625,11 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
         state = 'playing';
       },
     );
+  }
+
+  // Purely cosmetic — no gameplay effect, just a flourish for the fun of it.
+  function updateRoll() {
+    if (consumeRollPress()) astronaut.playFlourish('Roll', { duration: 0.1, returnDuration: 0.25 });
   }
 
   // A single consumeInteractPress() per frame is shared across all four
@@ -726,7 +707,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
     addBlip(SHIP_SPOT.normal, '#7bffb0', 7, 'ship');
     if (!mapSolved) {
       addBlip(MAP_CONSOLE_SPOT.normal, '#8fd6ff', 5);
-    } else if (!choiceMade) {
+    } else if (!spireResolved) {
       addBlip(SPIRE_SPOT.normal, '#ff5544', 6);
     }
     if (sentriesActive && !sentriesDisabled) {
@@ -768,6 +749,7 @@ export async function createClientWorldScene({ onDeliver, onRefuseEscape } = {})
       if (state === 'playing') {
         updateMovement(dt);
         updateInteract();
+        updateRoll();
       }
       astronaut.update(dt);
       updateCamera(dt, camera);
