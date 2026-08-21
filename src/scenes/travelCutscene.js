@@ -50,7 +50,7 @@ const TO_END_DIST = 55;
 // a lot) as a uniform offset on top of that — tuned against how it actually
 // looked in-game, not re-derived from the mesh.
 const TURBINE_PULL_IN = 0.6;
-const TURBINE_OFFSET = new THREE.Vector3(0, 1.4, -0.5);
+const TURBINE_OFFSET = new THREE.Vector3(0, 1.0, -0.5);
 const TURBINE_LOCAL_POSITIONS = [
   new THREE.Vector3(-2.13, 2.64, -1.21).multiplyScalar(TURBINE_PULL_IN).add(TURBINE_OFFSET),
   new THREE.Vector3(-1.70, 0.08, -1.38).multiplyScalar(TURBINE_PULL_IN).add(TURBINE_OFFSET),

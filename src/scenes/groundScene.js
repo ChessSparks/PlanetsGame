@@ -62,8 +62,10 @@ const HOUSE_SPOTS = [
 ];
 const VOLCANO_SPOT = { normal: sph(-35, 12), clear: 0.4 };
 // A short walk from the main volcano — where the fuel puzzle lives, found
-// only after the ship is repaired.
-const SMALL_VOLCANO_SPOT = { normal: sph(-24, 30), clear: 0.15 };
+// only after the ship is repaired. Pushed out to lon 38 (was 30) — at 30
+// the two volcanoes' block radii (4.5 + 1.8 = 6.3) left only ~1 unit of
+// actual clearance between them, crowding the two models together.
+const SMALL_VOLCANO_SPOT = { normal: sph(-24, 38), clear: 0.15 };
 // Deer/stag models pulled from the level — the stag.glb rig has its
 // antlers unskinned from the head bone, so they visibly float in place
 // while the rest of the animal animates underneath them.
@@ -237,7 +239,7 @@ const SUNS = [
 // everything looking like it hovered just above the surface. Sinking each
 // category in slightly by its own depth hides that gap.
 const EMBED = {
-  forest: 0.35, house: 0.95, volcano: 1.4, smallVolcano: 0.55, wildlife: 0.25, ship: 0.5,
+  forest: 0.35, house: 0.95, volcano: 2.6, smallVolcano: 1.1, wildlife: 0.25, ship: 0.5,
 };
 
 function placeOnSurface(object, normal, embed) {
@@ -1221,7 +1223,7 @@ async function placeHouses(scene, obstacles) {
 }
 
 async function placeVolcano(scene, obstacles) {
-  const volcano = await loadDecoration('/assets/volcano.glb', 8.5);
+  const volcano = await loadDecoration('/assets/volcano.glb', 6.5);
   placeOnSurface(volcano, VOLCANO_SPOT.normal, EMBED.volcano);
   orientToNormal(volcano, VOLCANO_SPOT.normal, 0);
   scene.add(volcano);
