@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const loader = new GLTFLoader();
 const rawCache = new Map();
@@ -47,10 +48,32 @@ function loadRaw(url) {
 
 // Returns a fresh clone scaled to targetHeight, wrapped so the wrapper's
 // origin sits exactly at the model's feet.
+//
+// Uses SkeletonUtils.clone(), not the plain Object3D.clone(true) — for a
+// rigged/skinned model, the default clone() copies each SkinnedMesh's
+// *reference* to the original skeleton rather than rebinding it to the
+// newly cloned bones, so every instance beyond the first ends up skinned
+// against bones it doesn't actually own. It doesn't always wreck the whole
+// mesh — small extremities (hands, in one case) tend to visibly disappear
+// first, since they're most sensitive to a mismatched bind matrix, while
+// the rest of the body can still look mostly right. SkeletonUtils.clone()
+// walks the hierarchy and rebinds skeletons to the clone's own bones
+// correctly; it's also a safe no-op for models with no skeleton at all, so
+// this applies to every loadDecoration call too, not just animated ones.
 export async function loadDecoration(url, targetHeight) {
   const { model, height } = await loadRaw(url);
-  const clone = model.clone(true);
-  clone.scale.setScalar(targetHeight / height);
+  const clone = cloneSkinned(model);
+  const scaleFactor = targetHeight / height;
+  clone.scale.setScalar(scaleFactor);
+  // clone.position is inherited from the cached raw model, where it was set
+  // to re-center the RAW (unscaled) geometry — feet at y=0, centered on x/z.
+  // A node's translation is applied after its own scale, so that offset
+  // must be scaled by the same factor or the centering drifts by
+  // rawOffset * (1 - scaleFactor). Negligible for models close to their
+  // target size, but for these building kits (authored at native heights in
+  // the hundreds/thousands of units, scaled down by ~0.01-0.03x) that drift
+  // is many units — the exact cause of buildings appearing to float or sink.
+  clone.position.multiplyScalar(scaleFactor);
   const wrapper = new THREE.Group();
   wrapper.add(clone);
   return wrapper;
@@ -58,11 +81,18 @@ export async function loadDecoration(url, targetHeight) {
 
 // Same normalization/caching as loadDecoration, but also wires up an
 // AnimationMixer for the clone's own clips (deer/stag etc. ship with a full
-// animation set) — same fadeTo()-based crossfade pattern as character.js.
+// animation set) — same fadeTo()-based crossfade pattern as character.js,
+// onFinished included, for one-shot reaction clips that need to hand back
+// control (e.g. a hit reaction) rather than just looping forever.
 export async function loadAnimatedDecoration(url, targetHeight) {
   const { model, height, animations } = await loadRaw(url);
-  const clone = model.clone(true);
-  clone.scale.setScalar(targetHeight / height);
+  const clone = cloneSkinned(model);
+  const scaleFactor = targetHeight / height;
+  clone.scale.setScalar(scaleFactor);
+  // See loadDecoration above for why this also needs scaling: the
+  // re-centering offset baked into the cached raw model is in unscaled
+  // units, and a node's translation isn't affected by its own scale.
+  clone.position.multiplyScalar(scaleFactor);
   const wrapper = new THREE.Group();
   wrapper.add(clone);
 
@@ -74,16 +104,29 @@ export async function loadAnimatedDecoration(url, targetHeight) {
   }
 
   let current = null;
-  function fadeTo(name, { duration = 0.4, loop = true } = {}) {
+  function fadeTo(name, {
+    duration = 0.4, loop = true, onFinished,
+  } = {}) {
     const next = actions[name];
     if (!next || next === current) return;
     next.reset();
     next.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
+    next.clampWhenFinished = !loop;
     next.enabled = true;
     next.play();
     if (current) next.crossFadeFrom(current, duration, false);
     else next.fadeIn(duration);
     current = next;
+
+    if (onFinished) {
+      const handler = (e) => {
+        if (e.action === next) {
+          mixer.removeEventListener('finished', handler);
+          onFinished();
+        }
+      };
+      mixer.addEventListener('finished', handler);
+    }
   }
 
   return {

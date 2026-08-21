@@ -42,6 +42,11 @@ let birdEl = null;
 let onSolvedCallback = null;
 let onCancelCallback = null;
 let running = false;
+// Physics (gravity, pipe spawning/movement) stays paused until the player's
+// first flap — without this, the bird started falling the instant the
+// overlay opened, before any input, since showFlappyBirdPuzzle kicks off
+// the game loop right away.
+let started = false;
 let rafId = null;
 let lastFrameTime = 0;
 let spawnTimer = 0;
@@ -83,6 +88,13 @@ function respawnBird() {
   invulnMs = INVULN_MS;
 }
 
+// The press that starts the round is also its first flap — same convention
+// the genre always uses, rather than a dead first press that only unpauses.
+function handleFlapInput() {
+  started = true;
+  flap();
+}
+
 function flap() {
   if (!running) return;
   bird.vy = FLAP_VY;
@@ -117,9 +129,10 @@ function crash() {
   clearPipes();
   passes = 0;
   spawnTimer = 0;
+  started = false;
   if (countEl) countEl.textContent = `0/${PASSES_NEEDED}`;
   respawnBird();
-  setStatus(`Crashed — starting over. (0/${PASSES_NEEDED})`);
+  setStatus(`Crashed — press to launch again. (0/${PASSES_NEEDED})`);
 }
 
 function updatePhysics(dt) {
@@ -202,8 +215,8 @@ function gameLoop(now) {
   const dt = Math.min((now - lastFrameTime) / 1000, 0.05);
   lastFrameTime = now;
 
-  if (consumeJumpPress()) flap();
-  updatePhysics(dt);
+  if (consumeJumpPress()) handleFlapInput();
+  if (started) updatePhysics(dt);
   if (running) render();
 
   rafId = requestAnimationFrame(gameLoop);
@@ -246,7 +259,7 @@ function ensureDom() {
   birdEl.appendChild(beakEl);
   fieldEl.appendChild(birdEl);
 
-  fieldEl.addEventListener('pointerdown', flap);
+  fieldEl.addEventListener('pointerdown', handleFlapInput);
 
   overlayEl.querySelector('#flappybird-close').addEventListener('click', () => {
     hideFlappyBirdPuzzle();
@@ -263,6 +276,7 @@ export function showFlappyBirdPuzzle(onSolved, onCancel) {
   clearPipes();
   passes = 0;
   spawnTimer = 0;
+  started = false;
   countEl.textContent = `0/${PASSES_NEEDED}`;
   setStatus('Space, or click/tap the field, to flap. Get 10 clean passes.');
   respawnBird();

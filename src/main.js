@@ -305,14 +305,11 @@ showTitleScreen({
 if (import.meta.env.DEV) {
   const panel = document.createElement('div');
   panel.id = 'dev-level-switcher';
-  // Hidden by default everywhere — the title screen, every cutscene, every
-  // level's own intro — rather than auto-showing itself the moment Start is
-  // clicked (which put it right on screen during the very first level's
-  // crash-landing cutscene). Purely opt-in now: press the backtick key (`)
-  // whenever it's actually wanted.
+  // Visible from the start screen onward. Press the backtick key (`) to
+  // toggle it off if it's in the way.
   panel.style.cssText = `
     position: fixed; bottom: 10px; left: 10px; z-index: 10000;
-    display: none; gap: 6px; padding: 8px; border-radius: 8px;
+    display: flex; gap: 6px; padding: 8px; border-radius: 8px;
     background: rgba(10, 14, 24, 0.8); border: 1px solid rgba(120, 180, 255, 0.35);
     font-family: sans-serif;
   `;
