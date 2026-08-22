@@ -2,7 +2,53 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
+// KHR_materials_pbrSpecularGlossiness is a deprecated glTF extension (long
+// since superseded by the core metallic-roughness workflow) that three.js's
+// GLTFLoader no longer supports out of the box — without this plugin, any
+// asset authored with it (e.g. public/assets/sixth/'s landmass model) loads
+// with GLTFLoader logging "Unknown extension" and silently dropping the
+// material entirely, which renders as a flat, untextured gray instead of
+// its actual diffuse texture/color. This registers minimal support: map the
+// extension's diffuseFactor/diffuseTexture onto a plain MeshStandardMaterial
+// (diffuse -> color/map) — not a true spec/gloss shading model, but for a
+// model whose specularFactor/glossinessFactor are just the neutral default,
+// the diffuse texture is where 100% of the actual visual color lives, so
+// this alone fixes "renders solid gray" without needing the rest.
+class GLTFMaterialsPbrSpecularGlossinessExtension {
+  constructor(parser) {
+    this.parser = parser;
+    this.name = 'KHR_materials_pbrSpecularGlossiness';
+  }
+
+  getMaterialType(materialIndex) {
+    const materialDef = this.parser.json.materials[materialIndex];
+    if (!materialDef.extensions || !materialDef.extensions[this.name]) return null;
+    return THREE.MeshStandardMaterial;
+  }
+
+  extendMaterialParams(materialIndex, materialParams) {
+    const materialDef = this.parser.json.materials[materialIndex];
+    if (!materialDef.extensions || !materialDef.extensions[this.name]) return Promise.resolve();
+
+    const extension = materialDef.extensions[this.name];
+    const pending = [];
+
+    materialParams.color = new THREE.Color(1, 1, 1);
+    materialParams.opacity = 1;
+    if (Array.isArray(extension.diffuseFactor)) {
+      const [r, g, b, a] = extension.diffuseFactor;
+      materialParams.color.setRGB(r, g, b);
+      materialParams.opacity = a;
+    }
+    if (extension.diffuseTexture !== undefined) {
+      pending.push(this.parser.assignTexture(materialParams, 'map', extension.diffuseTexture, THREE.SRGBColorSpace));
+    }
+    return Promise.all(pending);
+  }
+}
+
 const loader = new GLTFLoader();
+loader.register((parser) => new GLTFMaterialsPbrSpecularGlossinessExtension(parser));
 const rawCache = new Map();
 
 // Some source assets aren't authored standing tall along +Y (e.g. modeled

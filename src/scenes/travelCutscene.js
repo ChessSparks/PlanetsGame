@@ -50,7 +50,7 @@ const TO_END_DIST = 55;
 // a lot) as a uniform offset on top of that — tuned against how it actually
 // looked in-game, not re-derived from the mesh.
 const TURBINE_PULL_IN = 0.6;
-const TURBINE_OFFSET = new THREE.Vector3(0, 1.0, -0.5);
+const TURBINE_OFFSET = new THREE.Vector3(0, 0.7, -0.5);
 const TURBINE_LOCAL_POSITIONS = [
   new THREE.Vector3(-2.13, 2.64, -1.21).multiplyScalar(TURBINE_PULL_IN).add(TURBINE_OFFSET),
   new THREE.Vector3(-1.70, 0.08, -1.38).multiplyScalar(TURBINE_PULL_IN).add(TURBINE_OFFSET),
@@ -130,8 +130,13 @@ function setCaption(el, label) {
 
 // fromLabel/toLabel: shown in the caption ("Departing X" / "Approaching Y").
 // fromColor/fromAccent, toColor/toAccent: hex strings for the two backdrop
-// bodies' base + speckle-detail colors. shotStyle picks the camera's
-// choreography so back-to-back transitions don't all feel identical:
+// bodies' base + speckle-detail colors (used for whichever of the two stays
+// a procedural sphere). toBodyAssetPath/toBodyHeight: when set, the
+// destination body is that real model instead of a generic sphere — Smite
+// Colony's approach uses its own actual landmass model this way, so what
+// you fly toward is the same shape you land on rather than a placeholder
+// planet. shotStyle picks the camera's choreography so back-to-back
+// transitions don't all feel identical:
 //   'orbit'    - camera arcs in a continuous curve around the ship.
 //   'flyby'    - camera swoops side-to-side past the ship, then tucks in behind.
 //   'pullback' - camera starts tight on the ship and eases straight back into a wide shot.
@@ -142,6 +147,8 @@ export async function createTravelCutscene({
   fromAccent = '#22314a',
   toColor = '#8fa0aa',
   toAccent = '#5c6670',
+  toBodyAssetPath = null,
+  toBodyHeight = 30,
   duration = 6,
   shotStyle = 'orbit',
   musicTheme = null,
@@ -165,7 +172,9 @@ export async function createTravelCutscene({
   const fromBody = createTravelBody(24, fromColor, fromAccent);
   scene.add(fromBody);
 
-  const toBody = createTravelBody(32, toColor, toAccent);
+  const toBody = toBodyAssetPath
+    ? await loadDecoration(toBodyAssetPath, toBodyHeight)
+    : createTravelBody(32, toColor, toAccent);
   scene.add(toBody);
 
   const ship = await loadDecoration('/assets/spaceship.glb', SHIP_HEIGHT);
@@ -259,6 +268,9 @@ export async function createTravelCutscene({
     // works regardless of the ship model's actual forward axis.
     fromBody.position.copy(FROM_DIR).multiplyScalar(FROM_START_DIST + et * (FROM_END_DIST - FROM_START_DIST));
     toBody.position.copy(TO_DIR).multiplyScalar(TO_START_DIST + et * (TO_END_DIST - TO_START_DIST));
+    // A gentle spin sells "planet" for a real (non-spherical) model — a
+    // no-op-looking but harmless rotation on the procedural sphere too.
+    toBody.rotation.y += dt * 0.08;
 
     // Ship holds near the origin with a light idle bob/roll/yaw so it reads
     // as flying rather than pasted in place.

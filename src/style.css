@@ -1276,6 +1276,93 @@ html, body {
   filter: brightness(1.2);
 }
 
+/* --- Signal Decoder puzzle (Smite Colony's last alien) ------------------- */
+#sudoku-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 2, 14, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#sudoku-overlay.hidden {
+  display: none;
+}
+
+#sudoku-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(18, 8, 22, 0.95);
+  border: 1px solid rgba(139, 233, 255, 0.35);
+  box-shadow: 0 0 40px rgba(139, 233, 255, 0.2);
+}
+
+#sudoku-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#sudoku-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 18px;
+  max-width: 300px;
+}
+
+#sudoku-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 56px);
+  grid-template-rows: repeat(4, 56px);
+  gap: 4px;
+  margin: 0 auto 18px;
+}
+
+.sudoku-cell {
+  border-radius: 6px;
+  border: 1px solid rgba(139, 233, 255, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  font-size: 22px;
+  font-weight: 600;
+  color: #4affd8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sudoku-cell.sudoku-shaded {
+  background: rgba(139, 233, 255, 0.07);
+}
+
+.sudoku-cell.sudoku-given {
+  color: #eaf6ff;
+  background: rgba(139, 233, 255, 0.16);
+  border-color: rgba(139, 233, 255, 0.5);
+  cursor: default;
+}
+
+#sudoku-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#sudoku-close:hover {
+  filter: brightness(1.2);
+}
+
 /* --- On-screen touch controls (mobile/touch-primary devices only) ------- */
 /* z-index 25 sits above the bare canvas but below every overlay (30+), so a
    full-screen modal (puzzle/settings/dialogue) automatically covers and
@@ -1412,7 +1499,8 @@ html, body {
   #starchart-box,
   #memorymatch-box,
   #signalmaze-box,
-  #flappybird-box {
+  #flappybird-box,
+  #sudoku-box {
     max-width: 92vw;
     padding: 20px 18px;
   }
@@ -1422,12 +1510,12 @@ html, body {
   }
 
   #puzzle-box h1, #circuit-box h1, #cipher-box h1, #starchart-box h1, #settings-box h1, #memorymatch-box h1,
-  #signalmaze-box h1, #flappybird-box h1 {
+  #signalmaze-box h1, #flappybird-box h1, #sudoku-box h1 {
     font-size: 18px;
   }
 
   #message-box p, #choice-box p, #puzzle-box p, #circuit-box p, #cipher-box p, #starchart-box p, #memorymatch-box p,
-  #signalmaze-box p, #flappybird-box p {
+  #signalmaze-box p, #flappybird-box p, #sudoku-box p {
     font-size: 12.5px;
   }
 

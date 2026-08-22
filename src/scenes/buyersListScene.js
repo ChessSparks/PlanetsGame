@@ -15,6 +15,7 @@ import { createMinimap } from '../game/minimap.js';
 import { showMemoryMatchPuzzle } from '../game/memoryMatchPuzzle.js';
 import { showSignalMazePuzzle } from '../game/signalMazePuzzle.js';
 import { showFlappyBirdPuzzle } from '../game/flappyBirdPuzzle.js';
+import { storyFlags } from '../game/storyFlags.js';
 
 // One of each — not the same "memory" game three times, and none of them
 // reused from the other levels (sliding-tile/sequence-repeat/rotate-connect/
@@ -811,14 +812,20 @@ export async function createBuyersListScene({ onComplete } = {}) {
     // The closing beat used to be stapled to the end of the client-world
     // level (Mission IV) — moved here since this is whichever mission is
     // currently last. If a Mission VI ever exists, this handoff moves again.
+    // Entry 4 is corrupted by default; Smite Colony's alien chase (a
+    // separate, non-blocking side activity there) can partially recover it
+    // ahead of time — first name only, surname still gone — via storyFlags.
+    const fourthEntry = storyFlags.fourthClientFirstName
+      ? `4. ${storyFlags.fourthClientFirstName} [SURNAME CORRUPTED] — Unknown`
+      : '4. [ENTRY CORRUPTED] — Unknown';
     const screens = [
       {
         title: 'The Buyer\'s List',
         body: 'BUYER\'S LIST — PARTIAL RECOVERY\n\n'
-          + '1. Kaross Vey — Ashworld Colony\n'
+          + '1. Kaross Vey — Smite Colony\n'
           + '2. The Meridian Concern — Veyra Station\n'
           + '3. Ilsa Ductane — Coral Reach\n'
-          + '4. [ENTRY CORRUPTED] — Unknown\n\n'
+          + `${fourthEntry}\n\n`
           + 'Four names. Four planets. Whichever one of them bought enough crystals to end a world, the list alone doesn\'t say.',
       },
       {

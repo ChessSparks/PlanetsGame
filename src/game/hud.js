@@ -132,7 +132,12 @@ export function hideKeysDisplay() {
   if (el) el.remove();
 }
 
-export function announceObjective(text) {
+// `speaker` lets a caller reuse this same bubble for someone other than
+// Corthana (e.g. a garbled signal with no face) — defaults keep every
+// existing call site (which only ever passes `text`) showing Corthana
+// exactly as before.
+export function announceObjective(text, speaker = {}) {
+  const { name = 'Corthana', iconSrc = '/assets/images/cortana-ai.png' } = speaker;
   let el = document.getElementById('objective-banner');
   if (!el) {
     el = document.createElement('div');
@@ -146,16 +151,16 @@ export function announceObjective(text) {
       transition: opacity 0.4s ease; box-shadow: 0 0 30px rgba(80,180,255,0.2);
     `;
     el.innerHTML = `
-      <img src="/assets/images/cortana-ai.png" alt="" style="
+      <img id="objective-icon" src="" alt="" style="
         width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
         flex-shrink: 0; margin-top: 1px; border: 1px solid rgba(120,200,255,0.6);
         box-shadow: 0 0 12px rgba(80,180,255,0.6);
       ">
       <div style="display: flex; flex-direction: column; gap: 3px; min-width: 0;">
-        <span style="
+        <span id="objective-speaker" style="
           font-size: 11px; font-weight: 700; letter-spacing: 1.6px;
           text-transform: uppercase; color: #7fd8ff;
-        ">Corthana</span>
+        "></span>
         <span id="objective-text" style="
           font-size: 14.5px; font-weight: 500; line-height: 1.4; color: #eaf6ff;
         "></span>
@@ -163,6 +168,10 @@ export function announceObjective(text) {
     `;
     document.body.appendChild(el);
   }
+  const iconEl = el.querySelector('#objective-icon');
+  iconEl.style.display = iconSrc ? '' : 'none';
+  if (iconSrc) iconEl.src = iconSrc;
+  el.querySelector('#objective-speaker').textContent = name;
   el.querySelector('#objective-text').textContent = text;
   el.style.opacity = '1';
   clearTimeout(el._hideTimer);

@@ -6,7 +6,6 @@ import {
 } from './game/hud.js';
 import { showTitleScreen } from './game/titleScreen.js';
 import { initSettingsMenu } from './game/settingsMenu.js';
-import { unlockAudio } from './game/audio.js';
 
 // Each scene is dynamically imported at the point it's actually needed
 // (see the phase-starter functions below) rather than statically up top —
@@ -75,6 +74,54 @@ async function startTravelPhase(config, next) {
   hideLoadingScreen();
 }
 
+// Every inter-level travel cutscene, each pulled out into its own named
+// function (rather than left inline in the phase-starter that normally
+// triggers it) for two reasons: the dev switcher below can preview any of
+// them directly without playing up to that point first, and there's a
+// single definition of each transition's config instead of one copy buried
+// in a closure that could drift from what the dev button plays.
+function startHomeOrbitToMoonTravel() {
+  return startTravelPhase({
+    fromLabel: 'Home Orbit',
+    toLabel: 'the Moon',
+    fromColor: '#4dd0ff',
+    fromAccent: '#1c4a66',
+    toColor: '#9aa3ad',
+    toAccent: '#5c6068',
+    shotStyle: 'orbit',
+    musicTheme: 'moon',
+  }, startMoonPhase).catch((err) => {
+    console.error('Failed to start moon phase:', err);
+    showOverlay(
+      'Something went wrong',
+      `The moon scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+      'Retry',
+      () => startMoonPhase().catch((e) => console.error(e)),
+    );
+  });
+}
+
+function startMoonToClientWorldTravel() {
+  return startTravelPhase({
+    fromLabel: 'the Moon',
+    toLabel: "the Client's Homeworld",
+    fromColor: '#9aa3ad',
+    fromAccent: '#5c6068',
+    toColor: '#8a6a4a',
+    toAccent: '#4a3626',
+    shotStyle: 'flyby',
+    musicTheme: 'client',
+  }, startClientWorldPhase).catch((err) => {
+    console.error('Failed to start client-world phase:', err);
+    showOverlay(
+      'Something went wrong',
+      `The next scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
+      'Retry',
+      () => startClientWorldPhase().catch((e) => console.error(e)),
+    );
+  });
+}
+
 async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
   const startFuel = Math.min(100, 60 + Math.round((fuelCellsCollected / totalFuelCells) * 40));
   hideKeysDisplay();
@@ -88,24 +135,7 @@ async function startAscentPhase(fuelCellsCollected, totalFuelCells) {
   const ascent = await createAscentScene({
     startFuel,
     onRestart: () => startGroundPhase(),
-    onOrbitReached: () => startTravelPhase({
-      fromLabel: 'Home Orbit',
-      toLabel: 'the Moon',
-      fromColor: '#4dd0ff',
-      fromAccent: '#1c4a66',
-      toColor: '#9aa3ad',
-      toAccent: '#5c6068',
-      shotStyle: 'orbit',
-      musicTheme: 'moon',
-    }, startMoonPhase).catch((err) => {
-      console.error('Failed to start moon phase:', err);
-      showOverlay(
-        'Something went wrong',
-        `The moon scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
-        'Retry',
-        () => startMoonPhase().catch((e) => console.error(e)),
-      );
-    }),
+    onOrbitReached: () => startHomeOrbitToMoonTravel(),
   });
   activeScene = ascent;
   hideLoadingScreen();
@@ -122,24 +152,7 @@ async function startMoonPhase() {
   teardownActiveScene();
   const { createMoonScene } = await import('./scenes/moonScene.js');
   const moon = await createMoonScene({
-    onComplete: () => startTravelPhase({
-      fromLabel: 'the Moon',
-      toLabel: "the Client's Homeworld",
-      fromColor: '#9aa3ad',
-      fromAccent: '#5c6068',
-      toColor: '#8a6a4a',
-      toAccent: '#4a3626',
-      shotStyle: 'flyby',
-      musicTheme: 'client',
-    }, startClientWorldPhase).catch((err) => {
-      console.error('Failed to start client-world phase:', err);
-      showOverlay(
-        'Something went wrong',
-        `The next scene failed to load:\n${err.message}\n\nCheck the browser console for details.`,
-        'Retry',
-        () => startClientWorldPhase().catch((e) => console.error(e)),
-      );
-    }),
+    onComplete: () => startMoonToClientWorldTravel(),
   });
   activeScene = moon;
   hideLoadingScreen();
@@ -148,18 +161,18 @@ async function startMoonPhase() {
 // A teaser card shown right before the Mission Complete/Restart screen —
 // hints at future missions/planets rather than just cutting straight to
 // "the end," so the story reads as paused rather than fully closed off.
-// Shown after Mission V (the Exchange) now, so it only teases what's still
-// unbuilt (VI-VIII) rather than V itself, which the player just played.
+// Shown after Mission VI (Smite Colony) now, so it only teases what's still
+// unbuilt (VII-VIII) rather than V or VI, which the player just played.
 function showToBeContinuedScreen() {
   teardownActiveScene();
   hideHud();
   hideKeysDisplay();
   showOverlay(
     'To Be Continued...',
-    'The buyer\'s list is aboard, encrypted six ways from Sunday, but it\'s aboard.\n\n'
+    'The buyer\'s list is aboard, encrypted six ways from Sunday — and Kaross Vey isn\'t a mystery anymore '
+    + 'either.\n\n'
     + 'Corthana\'s already parsing headers when the next contract lights up the console.\n\n'
     + 'Coming missions:\n\n'
-    + '— Mission VI: What the Crystals Remember\n'
     + '— Mission VII: The Next Quiet Planet\n'
     + '— Mission VIII: Reclamation\n\n'
     + 'The ship\'s fueled. The stars aren\'t going anywhere. Neither, it turns out, are you.',
@@ -196,10 +209,8 @@ function showEndingScreen() {
   );
 }
 
-async function startClientWorldPhase() {
-  camera.position.set(0, 30, 8);
-  teardownActiveScene();
-  const endingTravelConfig = {
+function startClientWorldToExchangeTravel() {
+  return startTravelPhase({
     fromLabel: "the Client's Homeworld",
     toLabel: 'the Exchange',
     fromColor: '#8a6a4a',
@@ -208,45 +219,85 @@ async function startClientWorldPhase() {
     toAccent: '#7a4a30',
     shotStyle: 'pullback',
     musicTheme: 'moon',
-  };
-  const handleEscape = () => startTravelPhase(
-    endingTravelConfig,
-    () => startBuyersListPhase(),
-  ).catch((err) => {
+  }, () => startBuyersListPhase()).catch((err) => {
     console.error('Failed to play the closing cutscene:', err);
     startBuyersListPhase().catch((e) => console.error(e));
   });
+}
+
+async function startClientWorldPhase() {
+  camera.position.set(0, 30, 8);
+  teardownActiveScene();
   const { createClientWorldScene } = await import('./scenes/clientWorldScene.js');
-  const clientWorld = await createClientWorldScene({ onEscape: handleEscape });
+  const clientWorld = await createClientWorldScene({
+    onEscape: () => startClientWorldToExchangeTravel(),
+  });
   activeScene = clientWorld;
   hideLoadingScreen();
 }
 
 // Mission V: the alien trade world where the buyer's list gets pulled from
-// 3 archive terminals. onComplete plays the closing cutscene into the
-// To-Be-Continued/Mission-Complete flow every other mission ends on, now
-// that this one is actually reachable through play instead of only the dev
-// switcher.
+// 3 archive terminals. onComplete plays the closing cutscene into Mission
+// VI (Smite Colony) — the list names Kaross Vey there, so that's the very
+// next stop, not straight to the To-Be-Continued/Mission-Complete flow.
+// Shared by startBuyersListPhase's real onComplete and the dev switcher's
+// standalone cutscene-preview button below.
+function startExchangeToSmiteColonyTravel() {
+  return startTravelPhase({
+    fromLabel: 'the Exchange',
+    toLabel: 'Smite Colony',
+    fromColor: '#c47a56',
+    fromAccent: '#7a4a30',
+    toBodyAssetPath: '/assets/sixth/whimsical_cartoon_space_land_3d_model.glb',
+    toBodyHeight: 30,
+    shotStyle: 'pullback',
+    musicTheme: 'client',
+  }, async () => startSmiteColonyPhase()).catch((err) => {
+    console.error('Failed to start Smite Colony phase:', err);
+    startSmiteColonyPhase().catch((e) => console.error(e));
+  });
+}
+
 async function startBuyersListPhase() {
   camera.position.set(0, 25, 6.5);
   teardownActiveScene();
   const { createBuyersListScene } = await import('./scenes/buyersListScene.js');
   const buyersList = await createBuyersListScene({
-    onComplete: () => startTravelPhase({
-      fromLabel: 'the Exchange',
-      toLabel: 'Home',
-      fromColor: '#c47a56',
-      fromAccent: '#7a4a30',
-      toColor: '#7bc8ff',
-      toAccent: '#3a6a99',
-      shotStyle: 'pullback',
-      musicTheme: 'ground',
-    }, async () => showToBeContinuedScreen()).catch((err) => {
-      console.error('Failed to play the closing cutscene:', err);
-      showToBeContinuedScreen();
-    }),
+    onComplete: () => startExchangeToSmiteColonyTravel(),
   });
   activeScene = buyersList;
+  hideLoadingScreen();
+}
+
+function startSmiteColonyToHomeTravel() {
+  return startTravelPhase({
+    fromLabel: 'Smite Colony',
+    toLabel: 'Home',
+    fromColor: '#8c8c94',
+    fromAccent: '#46464e',
+    toColor: '#7bc8ff',
+    toAccent: '#3a6a99',
+    shotStyle: 'pullback',
+    musicTheme: 'ground',
+  }, async () => showToBeContinuedScreen()).catch((err) => {
+    console.error('Failed to play the closing cutscene:', err);
+    showToBeContinuedScreen();
+  });
+}
+
+// Mission VI: Smite Colony, chasing down Kaross Vey — built around public/
+// assets/sixth/'s remaining asset (a small drifting landmass) as the actual
+// walkable ground. onComplete plays the closing cutscene into the
+// To-Be-Continued/Mission-Complete flow every mission ends on — that flow
+// moved here from Buyer's List now that this is the actual last built stop.
+async function startSmiteColonyPhase() {
+  camera.position.set(0, 25, 6.5);
+  teardownActiveScene();
+  const { createSmiteColonyScene } = await import('./scenes/smiteColonyScene.js');
+  const smiteColony = await createSmiteColonyScene({
+    onComplete: () => startSmiteColonyToHomeTravel(),
+  });
+  activeScene = smiteColony;
   hideLoadingScreen();
 }
 
@@ -296,64 +347,6 @@ showTitleScreen({
     });
   },
 });
-
-// --- Dev-only level switcher ------------------------------------------
-// Lets a developer jump straight to any level while iterating, instead of
-// replaying the whole game up to that point every time. import.meta.env.DEV
-// is statically false in a production build, so Vite dead-code-eliminates
-// this whole block — none of it ships.
-if (import.meta.env.DEV) {
-  const panel = document.createElement('div');
-  panel.id = 'dev-level-switcher';
-  // Visible from the start screen onward. Press the backtick key (`) to
-  // toggle it off if it's in the way.
-  panel.style.cssText = `
-    position: fixed; bottom: 10px; left: 10px; z-index: 10000;
-    display: flex; gap: 6px; padding: 8px; border-radius: 8px;
-    background: rgba(10, 14, 24, 0.8); border: 1px solid rgba(120, 180, 255, 0.35);
-    font-family: sans-serif;
-  `;
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== '`') return;
-    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
-  });
-
-  function addDevJumpButton(label, run) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = label;
-    btn.style.cssText = `
-      cursor: pointer; padding: 6px 10px; border-radius: 6px; border: none;
-      background: #2a3a55; color: #eaf6ff; font-size: 12px; font-family: inherit;
-    `;
-    btn.addEventListener('click', () => {
-      // A real click, so this also doubles as the audio-unlock gesture
-      // scenes jumped to directly would otherwise never get.
-      unlockAudio();
-      document.getElementById('title-screen')?.classList.add('hidden');
-      showLoadingScreen();
-      run().catch((err) => {
-        console.error(`Dev jump to "${label}" failed:`, err);
-        hideLoadingScreen();
-        showOverlay(
-          'Something went wrong',
-          `Failed to jump to ${label}:\n${err.message}\n\nCheck the browser console for details.`,
-          'Dismiss',
-          () => {},
-        );
-      });
-    });
-    panel.appendChild(btn);
-  }
-
-  addDevJumpButton('Ground', () => startGroundPhase());
-  addDevJumpButton('Ascent', () => startAscentPhase(10, 10));
-  addDevJumpButton('Moon', () => startMoonPhase());
-  addDevJumpButton('Client World', () => startClientWorldPhase());
-  addDevJumpButton('Buyer\'s List', () => startBuyersListPhase());
-
-  document.body.appendChild(panel);
-}
 
 function animate() {
   requestAnimationFrame(animate);
