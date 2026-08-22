@@ -8,7 +8,6 @@ import {
 import {
   hideHud, showOverlay, announceObjective, flashToast,
 } from '../game/hud.js';
-import { speak } from '../game/voice.js';
 import { playMusicTheme, playAmbience } from '../game/audio.js';
 import { createMinimap } from '../game/minimap.js';
 import { storyFlags, FOURTH_CLIENT_FIRST_NAME } from '../game/storyFlags.js';
@@ -779,9 +778,9 @@ export async function createSmiteColonyScene({ onComplete } = {}) {
   let snapCameraNext = true;
   let state = 'intro';
 
+  // No TTS voice for this level — text-only Corthana bubble.
   function announce(text) {
     announceObjective(text);
-    speak(text);
   }
 
   showOverlay(
