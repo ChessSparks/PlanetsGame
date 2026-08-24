@@ -381,6 +381,29 @@ initSettingsMenu({
   onClose: () => { paused = false; },
 });
 
+// A level picked from the title screen's ☰ menu jumps straight there —
+// no travel cutscene (there's no "previous level" to transition from) —
+// same error-handling shape every other phase transition in this file
+// already uses. Player-facing replacement for what used to be a dev-only
+// jump panel; normal play via the Start button is completely untouched by
+// this and still goes through every level in order with its cutscenes.
+function jumpToLevel(label, run) {
+  // A real click, so this also doubles as the audio-unlock gesture a
+  // level jumped to directly would otherwise never get.
+  unlockAudio();
+  showLoadingScreen();
+  run().catch((err) => {
+    console.error(`Level jump to "${label}" failed:`, err);
+    hideLoadingScreen();
+    showOverlay(
+      'Something went wrong',
+      `Failed to jump to ${label}:\n${err.message}\n\nCheck the browser console for details.`,
+      'Dismiss',
+      () => {},
+    );
+  });
+}
+
 // The title screen's Start click is the game's first real user gesture —
 // asset loading (and the loading screen) only begins once it fires, rather
 // than starting immediately on page load before the player has done
@@ -399,78 +422,16 @@ showTitleScreen({
       );
     });
   },
+  levels: [
+    { label: 'Ground', onSelect: () => jumpToLevel('Ground', () => startGroundPhase()) },
+    { label: 'Ascent', onSelect: () => jumpToLevel('Ascent', () => startAscentPhase(10, 10)) },
+    { label: 'Moon', onSelect: () => jumpToLevel('Moon', () => startMoonPhase()) },
+    { label: 'Client World', onSelect: () => jumpToLevel('Client World', () => startClientWorldPhase()) },
+    { label: 'Buyer\'s List', onSelect: () => jumpToLevel('Buyer\'s List', () => startBuyersListPhase()) },
+    { label: 'Smite Colony', onSelect: () => jumpToLevel('Smite Colony', () => startSmiteColonyPhase()) },
+    { label: 'Veyra Station', onSelect: () => jumpToLevel('Veyra Station', () => startVeyraStationPhase()) },
+  ],
 });
-
-// --- Dev-only level switcher ------------------------------------------
-// Lets a developer jump straight to any level (or preview any single
-// inter-level travel cutscene on its own) while iterating, instead of
-// replaying the whole game up to that point every time. import.meta.env.DEV
-// is statically false in a production build, so Vite dead-code-eliminates
-// this whole block — none of it ships.
-if (import.meta.env.DEV) {
-  const panel = document.createElement('div');
-  panel.id = 'dev-level-switcher';
-  // Visible from the start screen onward. Press the backtick key (`) to
-  // toggle it off if it's in the way.
-  panel.style.cssText = `
-    position: fixed; bottom: 10px; left: 10px; z-index: 10000;
-    display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-radius: 8px;
-    max-width: calc(100vw - 20px);
-    background: rgba(10, 14, 24, 0.8); border: 1px solid rgba(120, 180, 255, 0.35);
-    font-family: sans-serif;
-  `;
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== '`') return;
-    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
-  });
-
-  function addDevJumpButton(label, run, color = '#2a3a55') {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = label;
-    btn.style.cssText = `
-      cursor: pointer; padding: 6px 10px; border-radius: 6px; border: none;
-      background: ${color}; color: #eaf6ff; font-size: 12px; font-family: inherit;
-    `;
-    btn.addEventListener('click', () => {
-      // A real click, so this also doubles as the audio-unlock gesture
-      // scenes jumped to directly would otherwise never get.
-      unlockAudio();
-      document.getElementById('title-screen')?.classList.add('hidden');
-      showLoadingScreen();
-      run().catch((err) => {
-        console.error(`Dev jump to "${label}" failed:`, err);
-        hideLoadingScreen();
-        showOverlay(
-          'Something went wrong',
-          `Failed to jump to ${label}:\n${err.message}\n\nCheck the browser console for details.`,
-          'Dismiss',
-          () => {},
-        );
-      });
-    });
-    panel.appendChild(btn);
-  }
-
-  addDevJumpButton('Ground', () => startGroundPhase());
-  addDevJumpButton('Ascent', () => startAscentPhase(10, 10));
-  addDevJumpButton('Moon', () => startMoonPhase());
-  addDevJumpButton('Client World', () => startClientWorldPhase());
-  addDevJumpButton('Buyer\'s List', () => startBuyersListPhase());
-  addDevJumpButton('Smite Colony', () => startSmiteColonyPhase());
-  addDevJumpButton('Veyra Station', () => startVeyraStationPhase());
-
-  // Every travel cutscene, playable on its own — a different color so they
-  // read as a distinct group from the level buttons above.
-  addDevJumpButton('Cutscene: Orbit → Moon', () => startHomeOrbitToMoonTravel(), '#4a2f5c');
-  addDevJumpButton('Cutscene: Moon → Client', () => startMoonToClientWorldTravel(), '#4a2f5c');
-  addDevJumpButton('Cutscene: Client → Exchange', () => startClientWorldToExchangeTravel(), '#4a2f5c');
-  addDevJumpButton('Cutscene: Exchange → Smite Colony', () => startExchangeToSmiteColonyTravel(), '#4a2f5c');
-  addDevJumpButton('Cutscene: Smite Colony → Veyra Station', () => startSmiteColonyToVeyraStationTravel(), '#4a2f5c');
-  addDevJumpButton('Cutscene: Veyra Station → Home', () => startVeyraStationToHomeTravel(), '#4a2f5c');
-
-  document.body.appendChild(panel);
-}
 
 function animate() {
   requestAnimationFrame(animate);

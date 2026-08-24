@@ -90,6 +90,92 @@ html, body {
   filter: brightness(1.1);
 }
 
+#title-menu-btn {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 56;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(120, 180, 255, 0.35);
+  background: rgba(6, 14, 28, 0.75);
+  color: #eaf6ff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#title-menu-btn:hover {
+  filter: brightness(1.2);
+}
+
+#title-level-menu {
+  position: fixed;
+  top: 72px;
+  right: 18px;
+  z-index: 57;
+  background: rgba(6, 14, 28, 0.92);
+  border: 1px solid rgba(120, 180, 255, 0.35);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 220px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+#title-level-menu.hidden {
+  display: none;
+}
+
+#title-level-menu-header {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #7fd8ff;
+  margin-bottom: 10px;
+}
+
+#title-level-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.title-level-btn {
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08);
+  color: #eaf6ff;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.title-level-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+#title-level-menu-close {
+  width: 100%;
+  padding: 6px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.1);
+  color: #eaf6ff;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+#title-level-menu-close:hover {
+  filter: brightness(1.2);
+}
+
 #settings-overlay {
   position: fixed;
   inset: 0;
