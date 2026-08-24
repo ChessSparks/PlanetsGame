@@ -812,12 +812,23 @@ export async function createBuyersListScene({ onComplete } = {}) {
     // The closing beat used to be stapled to the end of the client-world
     // level (Mission IV) — moved here since this is whichever mission is
     // currently last. If a Mission VI ever exists, this handoff moves again.
-    // Entry 4 is corrupted by default; Smite Colony's alien chase (a
-    // separate, non-blocking side activity there) can partially recover it
-    // ahead of time — first name only, surname still gone — via storyFlags.
-    const fourthEntry = storyFlags.fourthClientFirstName
-      ? `4. ${storyFlags.fourthClientFirstName} [SURNAME CORRUPTED] — Unknown`
-      : '4. [ENTRY CORRUPTED] — Unknown';
+    // Entry 4 is corrupted by default. In normal story order this screen
+    // fires before Smite Colony/Veyra Station are even played, so their
+    // optional side activities (which can recover a first and/or middle
+    // name for this same entry — see storyFlags.js) haven't had a chance
+    // to run yet; storyFlags is checked anyway purely for the dev-menu
+    // case, where those levels can be visited out of order. The real,
+    // chronologically-correct recap of whatever ends up recovered lives in
+    // main.js's showToBeContinuedScreen instead, which fires after both.
+    let fourthEntry = '4. [ENTRY CORRUPTED] — Unknown';
+    if (storyFlags.fourthClientFirstName && storyFlags.fourthClientMiddleName) {
+      fourthEntry = `4. ${storyFlags.fourthClientFirstName} ${storyFlags.fourthClientMiddleName} `
+        + '[SURNAME CORRUPTED] — Unknown';
+    } else if (storyFlags.fourthClientFirstName) {
+      fourthEntry = `4. ${storyFlags.fourthClientFirstName} [MIDDLE/SURNAME CORRUPTED] — Unknown`;
+    } else if (storyFlags.fourthClientMiddleName) {
+      fourthEntry = `4. [FIRST NAME CORRUPTED] ${storyFlags.fourthClientMiddleName} [SURNAME CORRUPTED] — Unknown`;
+    }
     const screens = [
       {
         title: 'The Buyer\'s List',

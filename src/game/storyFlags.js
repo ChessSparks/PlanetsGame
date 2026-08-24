@@ -9,6 +9,15 @@
 // corrupted entry if it's been set.
 export const FOURTH_CLIENT_FIRST_NAME = 'Voss';
 
+// Same idea, one level later: Veyra Station's station-terminal word-guess
+// puzzle reveals a middle name for the same still-mostly-corrupted 4th
+// entry. Independent of the first-name flag above — either, both, or
+// neither may be set depending on which of the two optional side
+// activities the player actually did, in either order, so buyersListScene
+// has to handle all four combinations gracefully.
+export const FOURTH_CLIENT_MIDDLE_NAME = 'Elias';
+
 export const storyFlags = {
   fourthClientFirstName: null,
+  fourthClientMiddleName: null,
 };

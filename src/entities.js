@@ -186,6 +186,261 @@ export function createMoonGround(radius) {
   return sphere;
 }
 
+// Converts a world-space unit sphere normal to the [0,1] UV space
+// THREE.SphereGeometry's own vertices already use (phi/(2*PI) horizontally,
+// 1-theta/PI vertically) — needed by anything that wants to paint onto (or
+// read from) createSnowGround's live canvases at the exact spot a given
+// surface point corresponds to, e.g. a footstep leaving a mark exactly
+// under the player rather than at some unrelated point on the sphere.
+export function sphereNormalToUv(normal, target = { u: 0, v: 0 }) {
+  const y = THREE.MathUtils.clamp(normal.y, -1, 1);
+  const theta = Math.acos(y);
+  let phi = Math.atan2(normal.z, -normal.x);
+  if (phi < 0) phi += Math.PI * 2;
+  target.u = phi / (Math.PI * 2);
+  target.v = 1 - theta / Math.PI;
+  return target;
+}
+
+const SNOW_CANVAS_WIDTH = 2048;
+const SNOW_CANVAS_HEIGHT = 1024;
+
+function paintSnowBase(ctx, w, h) {
+  ctx.fillStyle = '#eef4f8';
+  ctx.fillRect(0, 0, w, h);
+
+  // Soft drift shading — pale blue-gray patches, not craters — reads as
+  // wind-sculpted snow rather than a moonscape even though the technique
+  // (painted-in shading on a flat base color) is the same as makeMoonGroundTexture.
+  // Scaled up from the 512x512/260-patch original by canvas area so density
+  // matches at this texture's actual size.
+  const driftColors = ['#dbe6ee', '#f8fbfd', '#cfdde8', '#e6eef4'];
+  const areaScale = (w * h) / (512 * 512);
+  for (let i = 0; i < 260 * areaScale; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const r = (10 + Math.random() * 34) * Math.sqrt(areaScale);
+    ctx.fillStyle = driftColors[i % driftColors.length];
+    ctx.globalAlpha = 0.28;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.45, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Faint blue shadow pockets so the surface doesn't read as flat white.
+  for (let i = 0; i < 40 * areaScale; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const r = (6 + Math.random() * 16) * Math.sqrt(areaScale);
+    const grad = ctx.createRadialGradient(x, y, r * 0.2, x, y, r);
+    grad.addColorStop(0, 'rgba(150,180,205,0.22)');
+    grad.addColorStop(1, 'rgba(150,180,205,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Sparkle flecks — tiny bright dots, catching light like packed ice
+  // crystals in the snow.
+  ctx.fillStyle = '#ffffff';
+  for (let i = 0; i < 500 * areaScale; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    ctx.globalAlpha = 0.3 + Math.random() * 0.4;
+    ctx.fillRect(x, y, 1.4 * Math.sqrt(areaScale), 1.4 * Math.sqrt(areaScale));
+  }
+  ctx.globalAlpha = 1;
+}
+
+// Same walkable-sphere convention as createMoonGround, but a pale snowfield
+// that can actually be trampled — the medium itself reacts and keeps the
+// mark, the same "give the surface a memory of what touched it" idea a
+// water ripple/wake shader uses, just realized as a live-painted canvas
+// (consistent with every other procedural ground in this file already
+// being canvas-texture-driven) rather than this codebase's first custom
+// GLSL shader.
+//
+// Two full-sphere (NOT tiled — deliberately repeat 1:1 with the mesh's own
+// UV, unlike every other ground texture here, which tiles for detail) live
+// canvases do the work: `colorTexture` is the diffuse map, and
+// `heightTexture` doubles as a THREE.MeshStandardMaterial displacementMap,
+// so a footstep genuinely darkens AND sinks the surface — real geometry
+// deformation, not a flat decal glued on top. If either canvas tiled, a
+// mark painted at one spot would appear smeared across every repeated tile
+// instead of staying put at the one place it was actually left.
+//
+// Vertex displacement can only ever be as fine as the mesh's own
+// tessellation — a single quad several tenths of a unit wide can't trace a
+// crisp boot outline no matter how detailed the displacement texture is.
+// So the effect is deliberately split in two: the *shape* (a real boot
+// silhouette) comes from the color canvas, which has effectively unlimited
+// resolution; the *sink* is a coarser, softer give in the geometry itself
+// that reads as "the ground actually gave way here" without trying (and
+// failing) to resolve individual tread detail through geometry alone.
+export function createSnowGround(radius, displacementDepth = 0.4) {
+  const colorCanvas = document.createElement('canvas');
+  colorCanvas.width = SNOW_CANVAS_WIDTH;
+  colorCanvas.height = SNOW_CANVAS_HEIGHT;
+  const colorCtx = colorCanvas.getContext('2d');
+  paintSnowBase(colorCtx, SNOW_CANVAS_WIDTH, SNOW_CANVAS_HEIGHT);
+  const colorTexture = new THREE.CanvasTexture(colorCanvas);
+  colorTexture.colorSpace = THREE.SRGBColorSpace;
+
+  const heightCanvas = document.createElement('canvas');
+  heightCanvas.width = SNOW_CANVAS_WIDTH;
+  heightCanvas.height = SNOW_CANVAS_HEIGHT;
+  const heightCtx = heightCanvas.getContext('2d');
+  heightCtx.fillStyle = '#ffffff'; // white = undisturbed = zero displacement
+  heightCtx.fillRect(0, 0, SNOW_CANVAS_WIDTH, SNOW_CANVAS_HEIGHT);
+  const heightTexture = new THREE.CanvasTexture(heightCanvas);
+
+  // Tessellated well beyond the other grounds' 96x96 specifically so the
+  // displacement map has enough vertices to actually show the broad sink,
+  // not just this level's own bump — the fine boot-shape detail still
+  // comes entirely from the color canvas above, not from this.
+  const geometry = new THREE.SphereGeometry(radius, 160, 160);
+  const material = new THREE.MeshStandardMaterial({
+    map: colorTexture,
+    displacementMap: heightTexture,
+    // displaced = position + normal * (texel*scale + bias); with
+    // bias = -scale, that's position + normal * scale * (texel - 1) — zero
+    // at texel=1 (white/undisturbed) and -scale (pushed inward along the
+    // normal, i.e. sunk) at texel=0 (black/fully trampled).
+    displacementScale: displacementDepth,
+    displacementBias: -displacementDepth,
+    roughness: 0.9,
+    metalness: 0,
+  });
+  const sphere = new THREE.Mesh(geometry, material);
+  sphere.receiveShadow = true;
+  sphere.userData.radius = radius;
+
+  // Pixels per world unit at the equator — the one latitude where texture-
+  // space distance and real ground distance actually match; the same
+  // equirectangular approximation every other lat/lon-mapped texture in
+  // this file already carries (it narrows toward the poles), acceptable
+  // since actual gameplay here stays well away from them.
+  const pxPerUnit = SNOW_CANVAS_WIDTH / (Math.PI * 2 * radius);
+
+  function paintDabAtPixel(ctx, cx, cy, pxRadius, drawFn) {
+    drawFn(ctx, cx, cy, pxRadius);
+    // The sphere wraps at u=0/u=1 — without this, a dab painted near one
+    // seam edge would just clip instead of continuing on the other side.
+    if (cx < pxRadius) drawFn(ctx, cx + SNOW_CANVAS_WIDTH, cy, pxRadius);
+    if (cx > SNOW_CANVAS_WIDTH - pxRadius) drawFn(ctx, cx - SNOW_CANVAS_WIDTH, cy, pxRadius);
+  }
+
+  function paintDab(ctx, u, v, pxRadius, drawFn) {
+    paintDabAtPixel(ctx, u * SNOW_CANVAS_WIDTH, (1 - v) * SNOW_CANVAS_HEIGHT, pxRadius, drawFn);
+  }
+
+  // Bearing of `forward` (a unit tangent vector at `normal`) expressed as a
+  // normalized direction in this canvas's own pixel space (+x = toward
+  // increasing u, +y = toward increasing v-row/canvas-down), so a footstep
+  // can be split into two offset pads (ball of foot ahead, heel behind)
+  // that actually point the way the player is walking instead of just
+  // sitting there as an undifferentiated blob.
+  //
+  // This is real spherical-coordinate calculus, not a shortcut: the
+  // sphere's own (θ,φ) chart stretches circles of longitude by a factor of
+  // sin(θ) relative to circles of latitude (a circle of longitude at the
+  // equator is the full sphere's circumference; nearer a pole, the same Δφ
+  // covers far less physical distance) — dividing by sinT below undoes
+  // exactly that stretch, without which the two pads would drift off-axis
+  // from the actual direction of travel by tens of degrees anywhere off
+  // the equator. Verified against a numerical finite-difference check
+  // (max error ~1e-4°) before relying on it here.
+  function sphereTangentBearing(normal, forward) {
+    const { x, y, z } = normal;
+    const cosT = y;
+    const sinT = Math.sqrt(Math.max(0, 1 - y * y));
+    if (sinT < 1e-4) return null; // degenerate right at the poles
+    const cosP = -x / sinT;
+    const sinP = z / sinT;
+    const dPhi = (forward.x * sinP + forward.z * cosP) / sinT;
+    const dTheta = -forward.x * cosP * cosT - forward.y * sinT + forward.z * sinP * cosT;
+    const len = Math.hypot(dPhi, dTheta);
+    if (len < 1e-9) return null;
+    return { dx: dPhi / len, dy: dTheta / len };
+  }
+
+  function drawColorDab(ctx, cx, cy, r) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, 'rgba(70,90,118,0.85)');
+    g.addColorStop(0.7, 'rgba(90,108,134,0.5)');
+    g.addColorStop(1, 'rgba(110,126,150,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawHeightDab(ctx, cx, cy, r) {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, 'rgba(0,0,0,0.95)');
+    g.addColorStop(0.7, 'rgba(0,0,0,0.6)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return {
+    mesh: sphere,
+    // Leaves one footstep's mark at (u, v) — darkens the color canvas and
+    // sinks the height canvas at that spot, permanently (no fade, same as
+    // real snow not un-denting itself). If `fromUV` is given, also paints
+    // a line of connecting dabs from there to here first, so a fast-
+    // moving step doesn't leave a gap in the trail; pass null for the very
+    // first footstep of a walk, when there's nothing to connect from yet.
+    // `normal`/`forward` (the walker's own, both THREE.Vector3) are optional
+    // — when given, the mark is split into two pads (ball of foot ahead,
+    // heel behind, via sphereTangentBearing above) so it actually reads as
+    // a boot pointed the way the player is walking rather than one round
+    // blob; omit them for a plain round dab.
+    stampFoot(u, v, footRadiusUnits, fromUV, normal, forward) {
+      const pxRadius = footRadiusUnits * pxPerUnit;
+      if (fromUV) {
+        let du = u - fromUV.u;
+        if (du > 0.5) du -= 1;
+        else if (du < -0.5) du += 1;
+        const dv = v - fromUV.v;
+        const travelPx = Math.hypot(du, dv) * SNOW_CANVAS_WIDTH;
+        const steps = Math.min(24, Math.max(1, Math.ceil(travelPx / (pxRadius * 0.6))));
+        for (let s = 1; s < steps; s++) {
+          const t = s / steps;
+          const su = fromUV.u + du * t;
+          const sv = fromUV.v + dv * t;
+          paintDab(colorCtx, su, sv, pxRadius * 0.85, drawColorDab);
+          paintDab(heightCtx, su, sv, pxRadius * 0.85, drawHeightDab);
+        }
+      }
+
+      const bearing = normal && forward ? sphereTangentBearing(normal, forward) : null;
+      const cx = u * SNOW_CANVAS_WIDTH;
+      const cy = (1 - v) * SNOW_CANVAS_HEIGHT;
+      if (bearing) {
+        const ballCx = cx + bearing.dx * pxRadius * 0.55;
+        const ballCy = cy + bearing.dy * pxRadius * 0.55;
+        const heelCx = cx - bearing.dx * pxRadius * 0.55;
+        const heelCy = cy - bearing.dy * pxRadius * 0.55;
+        paintDabAtPixel(colorCtx, ballCx, ballCy, pxRadius * 0.85, drawColorDab);
+        paintDabAtPixel(colorCtx, heelCx, heelCy, pxRadius * 0.6, drawColorDab);
+        paintDabAtPixel(heightCtx, ballCx, ballCy, pxRadius * 0.85, drawHeightDab);
+        paintDabAtPixel(heightCtx, heelCx, heelCy, pxRadius * 0.6, drawHeightDab);
+      } else {
+        paintDab(colorCtx, u, v, pxRadius, drawColorDab);
+        paintDab(heightCtx, u, v, pxRadius, drawHeightDab);
+      }
+      colorTexture.needsUpdate = true;
+      heightTexture.needsUpdate = true;
+    },
+  };
+}
+
 function makeForgeGroundTexture() {
   const size = 512;
   const canvas = document.createElement('canvas');

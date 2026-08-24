@@ -6,6 +6,8 @@ import {
 } from './game/hud.js';
 import { showTitleScreen } from './game/titleScreen.js';
 import { initSettingsMenu } from './game/settingsMenu.js';
+import { unlockAudio } from './game/audio.js';
+import { storyFlags } from './game/storyFlags.js';
 
 // Each scene is dynamically imported at the point it's actually needed
 // (see the phase-starter functions below) rather than statically up top —
@@ -161,19 +163,38 @@ async function startMoonPhase() {
 // A teaser card shown right before the Mission Complete/Restart screen —
 // hints at future missions/planets rather than just cutting straight to
 // "the end," so the story reads as paused rather than fully closed off.
-// Shown after Mission VI (Smite Colony) now, so it only teases what's still
-// unbuilt (VII-VIII) rather than V or VI, which the player just played.
+// Shown after Mission VII (Veyra Station) now, so it only teases what's
+// still unbuilt (VIII) rather than V/VI/VII, which the player just played.
 function showToBeContinuedScreen() {
   teardownActiveScene();
   hideHud();
   hideKeysDisplay();
+  // Buyer #4's own entry stays properly corrupted at recovery time (see
+  // buyersListScene.js's own departure screen, which fires before Smite
+  // Colony/Veyra Station are even played) — this is the first point in the
+  // story chronologically after both of those levels' optional side
+  // activities (the alien chase, the snowman's puzzle chain) could have
+  // filled any of it in, so it's the right place to actually report
+  // whatever ended up recovered: first name, middle name, both, or (if the
+  // player skipped both optional activities) still nothing at all.
+  let fourthLine;
+  if (storyFlags.fourthClientFirstName && storyFlags.fourthClientMiddleName) {
+    fourthLine = `Buyer #4 even has a name now — ${storyFlags.fourthClientFirstName} `
+      + `${storyFlags.fourthClientMiddleName}, surname still missing.`;
+  } else if (storyFlags.fourthClientFirstName) {
+    fourthLine = `Buyer #4's first name turned up too — ${storyFlags.fourthClientFirstName}. Rest's still dark.`;
+  } else if (storyFlags.fourthClientMiddleName) {
+    fourthLine = `Buyer #4's middle name turned up somewhere along the way — ${storyFlags.fourthClientMiddleName}. `
+      + 'Still no first or last.';
+  } else {
+    fourthLine = 'Buyer #4 is still just a corrupted line in the manifest.';
+  }
   showOverlay(
     'To Be Continued...',
-    'The buyer\'s list is aboard, encrypted six ways from Sunday — and Kaross Vey isn\'t a mystery anymore '
-    + 'either.\n\n'
+    'The buyer\'s list is aboard, encrypted six ways from Sunday — Kaross Vey isn\'t a mystery anymore, and '
+    + `the Meridian Concern has a paper trail now too. ${fourthLine}\n\n`
     + 'Corthana\'s already parsing headers when the next contract lights up the console.\n\n'
     + 'Coming missions:\n\n'
-    + '— Mission VII: The Next Quiet Planet\n'
     + '— Mission VIII: Reclamation\n\n'
     + 'The ship\'s fueled. The stars aren\'t going anywhere. Neither, it turns out, are you.',
     'Continue',
@@ -269,12 +290,44 @@ async function startBuyersListPhase() {
   hideLoadingScreen();
 }
 
-function startSmiteColonyToHomeTravel() {
+function startSmiteColonyToVeyraStationTravel() {
   return startTravelPhase({
     fromLabel: 'Smite Colony',
-    toLabel: 'Home',
+    toLabel: 'Veyra Station',
     fromColor: '#8c8c94',
     fromAccent: '#46464e',
+    toColor: '#dce8f2',
+    toAccent: '#7c96ac',
+    shotStyle: 'pullback',
+    musicTheme: 'moon',
+  }, async () => startVeyraStationPhase()).catch((err) => {
+    console.error('Failed to start Veyra Station phase:', err);
+    startVeyraStationPhase().catch((e) => console.error(e));
+  });
+}
+
+// Mission VI: Smite Colony, chasing down Kaross Vey — built around public/
+// assets/sixth/'s remaining asset (a small drifting landmass) as the actual
+// walkable ground. onComplete plays the closing cutscene into Mission VII
+// (Veyra Station), continuing down the buyer's list rather than jumping
+// straight to the To-Be-Continued/Mission-Complete flow.
+async function startSmiteColonyPhase() {
+  camera.position.set(0, 25, 6.5);
+  teardownActiveScene();
+  const { createSmiteColonyScene } = await import('./scenes/smiteColonyScene.js');
+  const smiteColony = await createSmiteColonyScene({
+    onComplete: () => startSmiteColonyToVeyraStationTravel(),
+  });
+  activeScene = smiteColony;
+  hideLoadingScreen();
+}
+
+function startVeyraStationToHomeTravel() {
+  return startTravelPhase({
+    fromLabel: 'Veyra Station',
+    toLabel: 'Home',
+    fromColor: '#dce8f2',
+    fromAccent: '#7c96ac',
     toColor: '#7bc8ff',
     toAccent: '#3a6a99',
     shotStyle: 'pullback',
@@ -285,19 +338,19 @@ function startSmiteColonyToHomeTravel() {
   });
 }
 
-// Mission VI: Smite Colony, chasing down Kaross Vey — built around public/
-// assets/sixth/'s remaining asset (a small drifting landmass) as the actual
-// walkable ground. onComplete plays the closing cutscene into the
-// To-Be-Continued/Mission-Complete flow every mission ends on — that flow
-// moved here from Buyer's List now that this is the actual last built stop.
-async function startSmiteColonyPhase() {
+// Mission VII: Veyra Station, chasing down buyer #2 — "The Meridian
+// Concern" (a company, not a named person, per the buyer's list). onComplete
+// plays the closing cutscene into the To-Be-Continued/Mission-Complete flow
+// every mission ends on — that flow moved here from Smite Colony now that
+// this is the actual last built stop.
+async function startVeyraStationPhase() {
   camera.position.set(0, 25, 6.5);
   teardownActiveScene();
-  const { createSmiteColonyScene } = await import('./scenes/smiteColonyScene.js');
-  const smiteColony = await createSmiteColonyScene({
-    onComplete: () => startSmiteColonyToHomeTravel(),
+  const { createVeyraStationScene } = await import('./scenes/veyraStationScene.js');
+  const veyraStation = await createVeyraStationScene({
+    onComplete: () => startVeyraStationToHomeTravel(),
   });
-  activeScene = smiteColony;
+  activeScene = veyraStation;
   hideLoadingScreen();
 }
 
@@ -347,6 +400,77 @@ showTitleScreen({
     });
   },
 });
+
+// --- Dev-only level switcher ------------------------------------------
+// Lets a developer jump straight to any level (or preview any single
+// inter-level travel cutscene on its own) while iterating, instead of
+// replaying the whole game up to that point every time. import.meta.env.DEV
+// is statically false in a production build, so Vite dead-code-eliminates
+// this whole block — none of it ships.
+if (import.meta.env.DEV) {
+  const panel = document.createElement('div');
+  panel.id = 'dev-level-switcher';
+  // Visible from the start screen onward. Press the backtick key (`) to
+  // toggle it off if it's in the way.
+  panel.style.cssText = `
+    position: fixed; bottom: 10px; left: 10px; z-index: 10000;
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-radius: 8px;
+    max-width: calc(100vw - 20px);
+    background: rgba(10, 14, 24, 0.8); border: 1px solid rgba(120, 180, 255, 0.35);
+    font-family: sans-serif;
+  `;
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== '`') return;
+    panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+  });
+
+  function addDevJumpButton(label, run, color = '#2a3a55') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.style.cssText = `
+      cursor: pointer; padding: 6px 10px; border-radius: 6px; border: none;
+      background: ${color}; color: #eaf6ff; font-size: 12px; font-family: inherit;
+    `;
+    btn.addEventListener('click', () => {
+      // A real click, so this also doubles as the audio-unlock gesture
+      // scenes jumped to directly would otherwise never get.
+      unlockAudio();
+      document.getElementById('title-screen')?.classList.add('hidden');
+      showLoadingScreen();
+      run().catch((err) => {
+        console.error(`Dev jump to "${label}" failed:`, err);
+        hideLoadingScreen();
+        showOverlay(
+          'Something went wrong',
+          `Failed to jump to ${label}:\n${err.message}\n\nCheck the browser console for details.`,
+          'Dismiss',
+          () => {},
+        );
+      });
+    });
+    panel.appendChild(btn);
+  }
+
+  addDevJumpButton('Ground', () => startGroundPhase());
+  addDevJumpButton('Ascent', () => startAscentPhase(10, 10));
+  addDevJumpButton('Moon', () => startMoonPhase());
+  addDevJumpButton('Client World', () => startClientWorldPhase());
+  addDevJumpButton('Buyer\'s List', () => startBuyersListPhase());
+  addDevJumpButton('Smite Colony', () => startSmiteColonyPhase());
+  addDevJumpButton('Veyra Station', () => startVeyraStationPhase());
+
+  // Every travel cutscene, playable on its own — a different color so they
+  // read as a distinct group from the level buttons above.
+  addDevJumpButton('Cutscene: Orbit → Moon', () => startHomeOrbitToMoonTravel(), '#4a2f5c');
+  addDevJumpButton('Cutscene: Moon → Client', () => startMoonToClientWorldTravel(), '#4a2f5c');
+  addDevJumpButton('Cutscene: Client → Exchange', () => startClientWorldToExchangeTravel(), '#4a2f5c');
+  addDevJumpButton('Cutscene: Exchange → Smite Colony', () => startExchangeToSmiteColonyTravel(), '#4a2f5c');
+  addDevJumpButton('Cutscene: Smite Colony → Veyra Station', () => startSmiteColonyToVeyraStationTravel(), '#4a2f5c');
+  addDevJumpButton('Cutscene: Veyra Station → Home', () => startVeyraStationToHomeTravel(), '#4a2f5c');
+
+  document.body.appendChild(panel);
+}
 
 function animate() {
   requestAnimationFrame(animate);

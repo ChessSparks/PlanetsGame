@@ -1363,6 +1363,164 @@ html, body {
   filter: brightness(1.2);
 }
 
+/* --- Signal Labyrinth puzzle (Veyra Station's snowman) -------------------- */
+#labyrinth-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 10, 16, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#labyrinth-overlay.hidden {
+  display: none;
+}
+
+#labyrinth-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(8, 16, 24, 0.95);
+  border: 1px solid rgba(123, 216, 255, 0.35);
+  box-shadow: 0 0 40px rgba(123, 216, 255, 0.2);
+}
+
+#labyrinth-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#labyrinth-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 18px;
+  max-width: 300px;
+}
+
+#labyrinth-canvas {
+  display: block;
+  margin: 0 auto 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(123, 216, 255, 0.3);
+}
+
+#labyrinth-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#labyrinth-close:hover {
+  filter: brightness(1.2);
+}
+
+/* --- Word Guess puzzle (Veyra Station terminal) --------------------------- */
+#wordguess-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 10, 16, 0.85);
+  backdrop-filter: blur(2px);
+  z-index: 30;
+}
+
+#wordguess-overlay.hidden {
+  display: none;
+}
+
+#wordguess-box {
+  text-align: center;
+  color: #eaf6ff;
+  padding: 28px 32px;
+  border-radius: 16px;
+  background: rgba(8, 16, 24, 0.95);
+  border: 1px solid rgba(255, 143, 107, 0.35);
+  box-shadow: 0 0 40px rgba(255, 143, 107, 0.2);
+}
+
+#wordguess-box h1 {
+  font-size: 22px;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+#wordguess-box p {
+  font-size: 13px;
+  line-height: 1.4;
+  opacity: 0.85;
+  margin: 0 auto 18px;
+  max-width: 320px;
+}
+
+#wordguess-grid {
+  display: grid;
+  gap: 6px;
+  margin: 0 auto 18px;
+}
+
+.wordguess-cell {
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 20px;
+  font-weight: 700;
+  color: #eaf6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+}
+
+.wordguess-cell.wordguess-filled {
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.wordguess-cell.wordguess-correct {
+  background: rgba(123, 255, 176, 0.35);
+  border-color: #7bffb0;
+  color: #eaf6ff;
+}
+
+.wordguess-cell.wordguess-present {
+  background: rgba(255, 209, 102, 0.3);
+  border-color: #ffd166;
+  color: #eaf6ff;
+}
+
+.wordguess-cell.wordguess-absent {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(234, 246, 255, 0.4);
+}
+
+#wordguess-close {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.12);
+  color: #eaf6ff;
+}
+
+#wordguess-close:hover {
+  filter: brightness(1.2);
+}
+
 /* --- On-screen touch controls (mobile/touch-primary devices only) ------- */
 /* z-index 25 sits above the bare canvas but below every overlay (30+), so a
    full-screen modal (puzzle/settings/dialogue) automatically covers and
@@ -1500,7 +1658,9 @@ html, body {
   #memorymatch-box,
   #signalmaze-box,
   #flappybird-box,
-  #sudoku-box {
+  #sudoku-box,
+  #labyrinth-box,
+  #wordguess-box {
     max-width: 92vw;
     padding: 20px 18px;
   }
@@ -1510,12 +1670,12 @@ html, body {
   }
 
   #puzzle-box h1, #circuit-box h1, #cipher-box h1, #starchart-box h1, #settings-box h1, #memorymatch-box h1,
-  #signalmaze-box h1, #flappybird-box h1, #sudoku-box h1 {
+  #signalmaze-box h1, #flappybird-box h1, #sudoku-box h1, #labyrinth-box h1, #wordguess-box h1 {
     font-size: 18px;
   }
 
   #message-box p, #choice-box p, #puzzle-box p, #circuit-box p, #cipher-box p, #starchart-box p, #memorymatch-box p,
-  #signalmaze-box p, #flappybird-box p, #sudoku-box p {
+  #signalmaze-box p, #flappybird-box p, #sudoku-box p, #labyrinth-box p, #wordguess-box p {
     font-size: 12.5px;
   }
 
