@@ -419,6 +419,42 @@ export async function createSmiteColonyScene({ onComplete } = {}) {
   const raySpan = landmassSize.y + RAY_ABOVE_MARGIN + RAY_BELOW_MARGIN;
   const landmassSearchRadius = Math.max(1, Math.max(landmassSize.x, landmassSize.z) / 2 - LANDMASS_SEARCH_MARGIN);
 
+  // A hard, geometry-independent boundary the player can never cross,
+  // on top of (not instead of) the sampleGroundY-null check below.
+  //
+  // The null check alone LOOKS watertight ("no ground under the candidate
+  // spot -> block the move") but has a real gap: it's evaluated fresh
+  // every frame against only that one frame's candidate (x,z), with no
+  // memory of anything in between. At RUN_SPEED that's normally a small
+  // ~0.1 unit step, but any dt spike (a GC pause, a dropped frame, a
+  // backgrounded tab regaining focus) inflates that step proportionally —
+  // and this particular landmass is exactly the shape where that matters:
+  // measured as one continuous slope across its full height range, built
+  // from three separate sub-meshes with an unusually deep nested-transform
+  // export chain (see LANDMASS_ASSET_PATH's comment). A raycast landing on
+  // a thin sliver of geometry right at that edge, or in the gap between
+  // sub-meshes, isn't a hypothetical edge case for a mesh like this — it's
+  // a likely one, and the null check has no fallback if a single frame's
+  // sample happens to land wrong.
+  //
+  // This adds a second, independent guard that doesn't depend on the mesh
+  // at all: an ellipse (not a circle — landmassSize.x and .z measured
+  // meaningfully different, so a circle sized to the longer axis would
+  // leave the shorter axis under-covered) centered on the landmass's own
+  // measured bounding box, using the same conservative LANDMASS_SEARCH_
+  // MARGIN inset already trusted elsewhere in this file for "stay inside
+  // the measured edge." A move is blocked if EITHER check fails — the
+  // ellipse can't develop the raycast's mesh-specific blind spots, and the
+  // raycast still catches real interior gaps the ellipse alone wouldn't
+  // know about.
+  const landmassHalfX = Math.max(1, landmassSize.x / 2 - LANDMASS_SEARCH_MARGIN);
+  const landmassHalfZ = Math.max(1, landmassSize.z / 2 - LANDMASS_SEARCH_MARGIN);
+  function isPastLandmassBoundary(x, z) {
+    const nx = (x - landmassCenter.x) / landmassHalfX;
+    const nz = (z - landmassCenter.z) / landmassHalfZ;
+    return nx * nx + nz * nz > 1;
+  }
+
   const raycaster = new THREE.Raycaster();
   raycaster.far = raySpan;
   const DOWN = new THREE.Vector3(0, -1, 0);
@@ -877,7 +913,8 @@ export async function createSmiteColonyScene({ onComplete } = {}) {
         || Math.abs(hitY - groundY) > MAX_GROUND_STEP
         || distToShip < SHIP_BLOCK_RADIUS + PLAYER_COLLISION_RADIUS
         || isBlockedByAlien(candidateX, candidateZ)
-        || isBlockedByHut(candidateX, candidateZ);
+        || isBlockedByHut(candidateX, candidateZ)
+        || isPastLandmassBoundary(candidateX, candidateZ);
       if (!blocked) {
         playerPos.x = candidateX;
         playerPos.z = candidateZ;
