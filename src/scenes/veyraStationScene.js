@@ -11,7 +11,6 @@ import {
 import {
   hideHud, showOverlay, flashToast, announceObjective,
 } from '../game/hud.js';
-import { speak } from '../game/voice.js';
 import { createMinimap } from '../game/minimap.js';
 import { playMusicTheme, playAmbience } from '../game/audio.js';
 import { showLabyrinthPuzzle } from '../game/labyrinthPuzzle.js';
@@ -558,9 +557,10 @@ export async function createVeyraStationScene({ onComplete } = {}) {
   // then the station will actually let you investigate it.
   let snowmanPuzzleSolved = false;
 
+  // No TTS voice for this level — text-only Corthana bubble, same as
+  // Smite Colony.
   function announce(text) {
     announceObjective(text);
-    speak(text);
   }
 
   showOverlay(
