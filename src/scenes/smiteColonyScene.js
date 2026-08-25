@@ -419,8 +419,8 @@ export async function createSmiteColonyScene({ onComplete } = {}) {
   const raySpan = landmassSize.y + RAY_ABOVE_MARGIN + RAY_BELOW_MARGIN;
   const landmassSearchRadius = Math.max(1, Math.max(landmassSize.x, landmassSize.z) / 2 - LANDMASS_SEARCH_MARGIN);
 
-  // A hard, geometry-independent boundary the player can never cross,
-  // on top of (not instead of) the sampleGroundY-null check below.
+  // A hard, geometry-independent boundary the player can never cross, on
+  // top of (not instead of) the sampleGroundY-null check below.
   //
   // The null check alone LOOKS watertight ("no ground under the candidate
   // spot -> block the move") but has a real gap: it's evaluated fresh
@@ -438,21 +438,19 @@ export async function createSmiteColonyScene({ onComplete } = {}) {
   // sample happens to land wrong.
   //
   // This adds a second, independent guard that doesn't depend on the mesh
-  // at all: an ellipse (not a circle — landmassSize.x and .z measured
-  // meaningfully different, so a circle sized to the longer axis would
-  // leave the shorter axis under-covered) centered on the landmass's own
-  // measured bounding box, using the same conservative LANDMASS_SEARCH_
-  // MARGIN inset already trusted elsewhere in this file for "stay inside
-  // the measured edge." A move is blocked if EITHER check fails — the
-  // ellipse can't develop the raycast's mesh-specific blind spots, and the
-  // raycast still catches real interior gaps the ellipse alone wouldn't
-  // know about.
-  const landmassHalfX = Math.max(1, landmassSize.x / 2 - LANDMASS_SEARCH_MARGIN);
-  const landmassHalfZ = Math.max(1, landmassSize.z / 2 - LANDMASS_SEARCH_MARGIN);
+  // at all: a hard circle around landmassCenter. Deliberately reuses
+  // landmassSearchRadius (not a tighter, tailored-to-each-axis ellipse) —
+  // an ellipse fit to the measured x/z extents was tried first and
+  // measured out tighter than this radius by 3.47 units on the shorter
+  // (z) axis, which would have made the player's own boundary stricter
+  // than the radius findClearingSpot/scatterSnowyHuts/alien placement
+  // already assume is safe to use — a mismatch that could plant the ship,
+  // an alien, or a hut on the far side of the player's own wall. Reusing
+  // the exact same radius already trusted for all of that placement logic
+  // instead keeps this new check consistent with it by construction, with
+  // zero risk of that conflict.
   function isPastLandmassBoundary(x, z) {
-    const nx = (x - landmassCenter.x) / landmassHalfX;
-    const nz = (z - landmassCenter.z) / landmassHalfZ;
-    return nx * nx + nz * nz > 1;
+    return Math.hypot(x - landmassCenter.x, z - landmassCenter.z) > landmassSearchRadius;
   }
 
   const raycaster = new THREE.Raycaster();
